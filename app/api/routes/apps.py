@@ -4,10 +4,31 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.schemas import GetReviewsResponseSchema
+from app.schemas import GetReviewsResponseSchema, AppDetailSchema
 from app.services import AppService
 
 router = APIRouter(prefix="/api", tags=["apps"])
+
+
+@router.get("/apps/{package_name}", response_model=AppDetailSchema)
+async def get_app_detail(
+    package_name: str,
+    db: AsyncSession = Depends(get_db),
+) -> AppDetailSchema:
+    """Get detailed information for an app.
+
+    Args:
+        package_name: The app's package name (e.g., com.vnpt.vnpttoken.vneid).
+        db: Database session.
+
+    Returns:
+        AppDetailSchema with app information.
+
+    Raises:
+        404: If app not found.
+    """
+    service = AppService(db)
+    return await service.get_app_detail(package_name)
 
 
 @router.get("/apps/{package_name}/reviews", response_model=GetReviewsResponseSchema)

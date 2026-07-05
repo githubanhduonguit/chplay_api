@@ -24,7 +24,7 @@ class App(BaseMixin, Base):
         package_name: Unique package name of the app (e.g., com.example.app).
         name: Display name of the application.
         icon_url: URL to the app's icon image.
-        avg_rating: Average rating of the app.
+        avg_rating: Average rating of the app (0-5).
         rating_count: Total number of ratings received.
         comments: Relationship to associated comments/reviews.
     """

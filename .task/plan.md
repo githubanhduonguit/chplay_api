@@ -2,217 +2,172 @@
 
 ## 🎯 API Endpoint
 
-### GET `/api/apps/{package_name}/reviews`
+### GET `/api/apps/{package_name}`
 
-Lấy reviews và comments cho một app cụ thể theo package_name.
+Lấy thông tin chi tiết của một app theo package_name.
 
 #### Request Parameters
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `page` | int | 1 | Trang hiện tại |
-| `pageSize` | int | 20 | Số items trên mỗi trang |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `package_name` | string | Yes | Package name của app (e.g., com.vnpt.vnpttoken.vneid) |
 
 #### Response Format (200 OK)
 ```json
 {
-  "total": 3,
-  "page": 1,
-  "pageSize": 20,
-  "reviews": [
-    {
-      "id": 1,
-      "reviewId": null,
-      "type": "review",
-      "author": {
-        "type": "user",
-        "name": "Người dùng VNeID 1",
-        "avatar": "https://ui-avatars.com/api/?name=V1"
-      },
-      "rating": 2,
-      "content": "...",
-      "createdAt": "2026-06-26T10:00:00+07:00",
-      "absaStatus": "labeled",
-      "botReplyStatus": "pending"
-    }
-  ],
-  "comments": [
-    {
-      "id": 5,
-      "reviewId": 4,
-      "type": "comment",
-      "author": {
-        "type": "bot",
-        "name": "Bot Support"
-      },
-      "content": "...",
-      "createdAt": "2026-06-28T11:02:00+07:00",
-      "absaStatus": null,
-      "botReplyStatus": null
-    }
-  ]
+  "id": 1,
+  "packageName": "com.vnpt.vnpttoken.vneid",
+  "name": "VNeID",
+  "icon": "https://play-lh.googleusercontent.com/vneid-icon",
+  "rating": {
+    "average": 2.3,
+    "count": 185000
+  },
+  "developer": {
+    "name": "Bộ Công an"
+  },
+  "installs": "10M+",
+  "category": "Productivity",
+  "createdAt": "2022-07-01T00:00:00+07:00"
 }
 ```
+
+#### Response Fields
+- `id`: App ID
+- `packageName`: Unique package name
+- `name`: App display name
+- `icon`: URL to app icon
+- `rating`: Object containing:
+  - `average`: Average rating (0-5)
+  - `count`: Total number of ratings
+- `developer`: Object containing:
+  - `name`: Developer/company name
+- `installs`: Installation count range (e.g., "10M+", "1M+")
+- `category`: App category (e.g., "Productivity", "Social")
+- `createdAt`: ISO 8601 timestamp when app was listed
+
+#### Error Cases
+- **404 Not Found**: If app with package_name doesn't exist
+- **400 Bad Request**: If package_name is invalid/empty
 
 ---
 
 ## 🗄️ Database Tables
 
 ### apps
-- `id` (bigint, PK)
-- `package_name` (varchar) - Unique
-- `name` (varchar)
-- `icon_url` (varchar, nullable)
-- `avg_rating` (numeric, nullable)
-- `rating_count` (bigint, nullable)
-- `created_at` (timestamp)
-
-### comments
-- `id` (bigint, PK)
-- `app_id` (bigint, FK)
-- `review_id` (bigint, nullable)
-- `author_type` (varchar) - 'user' or 'bot'
-- `author_name` (varchar)
-- `rating` (smallint, 1-5, nullable)
-- `content` (text)
-- `overall_sentiment` (varchar, nullable)
-- `absa_status` (varchar, default: 'pending')
-- `bot_reply_status` (varchar, default: 'pending')
-- `app_version` (varchar, nullable)
-- `source_review_id` (varchar, nullable)
-- `created_at` (timestamp)
-
-### comment_aspects (ABSA)
-- `id` (bigint, PK)
-- `comment_id` (bigint, FK)
-- `aspect` (varchar)
-- `sentiment` (varchar) - 'positive', 'negative', 'neutral'
-- `confidence_score` (numeric)
-- `model_version` (varchar)
-- `created_at` (timestamp)
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | bigint | Primary key |
+| `package_name` | varchar(256) | Unique package name |
+| `name` | varchar(512) | App display name |
+| `icon_url` | varchar(1024) | URL to icon image |
+| `avg_rating` | numeric(3,2) | Average rating (0-5) |
+| `rating_count` | bigint | Total ratings count |
+| `developer_name` | varchar(256) | Developer/company name |
+| `installs` | varchar(32) | Install count range |
+| `category` | varchar(128) | App category |
+| `created_at` | timestamp | When app was listed |
 
 ---
 
 ## 📝 Implementation Steps
 
-### 1. Create Models (SQLAlchemy/ORM)
+### 1. Update App Model
 ```python
-# models/app.py
-class App(Base):
-    __tablename__ = 'apps'
-    id = Column(BigInteger, primary_key=True)
-    package_name = Column(String, unique=True)
-    name = Column(String)
-    icon_url = Column(String, nullable=True)
-    avg_rating = Column(Numeric, nullable=True)
-    rating_count = Column(BigInteger, nullable=True)
-    created_at = Column(DateTime)
-    comments = relationship("Comment", back_populates="app")
-
-# models/comment.py
-class Comment(Base):
-    __tablename__ = 'comments'
-    id = Column(BigInteger, primary_key=True)
-    app_id = Column(BigInteger, ForeignKey('apps.id'))
-    review_id = Column(BigInteger, nullable=True)
-    author_type = Column(String, default='user')
-    author_name = Column(String)
-    rating = Column(SmallInteger, nullable=True)
-    content = Column(Text)
-    overall_sentiment = Column(String, nullable=True)
-    absa_status = Column(String, default='pending')
-    bot_reply_status = Column(String, default='pending')
-    app_version = Column(String, nullable=True)
-    source_review_id = Column(String, nullable=True)
-    created_at = Column(DateTime)
-    app = relationship("App", back_populates="comments")
-    aspects = relationship("CommentAspect", back_populates="comment")
-
-# models/comment_aspect.py
-class CommentAspect(Base):
-    __tablename__ = 'comment_aspects'
-    id = Column(BigInteger, primary_key=True)
-    comment_id = Column(BigInteger, ForeignKey('comments.id'))
-    aspect = Column(String)
-    sentiment = Column(String)
-    confidence_score = Column(Numeric)
-    model_version = Column(String)
-    created_at = Column(DateTime)
-    comment = relationship("Comment", back_populates="aspects")
+# app/db/models/app.py
+class App(BaseMixin, Base):
+    __tablename__ = "apps"
+    
+    package_name: Mapped[str] = mapped_column(String(256), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(512))
+    icon_url: Mapped[str | None] = mapped_column(String(1024))
+    avg_rating: Mapped[float | None] = mapped_column(Numeric(3, 2))
+    rating_count: Mapped[int | None] = mapped_column(Integer)
+    developer_name: Mapped[str | None] = mapped_column(String(256))
+    installs: Mapped[str | None] = mapped_column(String(32))
+    category: Mapped[str | None] = mapped_column(String(128))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 ```
 
-### 2. Create Schemas (Pydantic)
+### 2. Create Schemas
 ```python
-# schemas/review.py
-class AuthorSchema(BaseModel):
-    type: str
-    name: str
-    avatar: Optional[str] = None
+# app/schemas/app.py
+class RatingSchema(BaseModel):
+    average: float
+    count: int
 
-class ReviewSchema(BaseModel):
+class DeveloperSchema(BaseModel):
+    name: str | None = None
+
+class AppDetailSchema(BaseModel):
     id: int
-    reviewId: Optional[int]
-    type: str
-    author: AuthorSchema
-    rating: Optional[int]
-    content: str
+    packageName: str
+    name: str
+    icon: str | None
+    rating: RatingSchema
+    developer: DeveloperSchema
+    installs: str | None
+    category: str | None
     createdAt: datetime
-    absaStatus: Optional[str]
-    botReplyStatus: Optional[str]
-
-class GetReviewsResponseSchema(BaseModel):
-    total: int
-    page: int
-    pageSize: int
-    reviews: List[ReviewSchema]
-    comments: List[ReviewSchema]
 ```
 
 ### 3. Create Service
 ```python
-# services/app_service.py
+# app/services/app_service.py
 class AppService:
-    def get_reviews(self, package_name: str, page: int = 1, page_size: int = 20):
-        app = db.query(App).filter(App.package_name == package_name).first()
+    async def get_app_detail(self, package_name: str) -> AppDetailSchema:
+        # Query app by package_name
+        app = await db.query(App).filter(App.package_name == package_name).first()
+        
         if not app:
-            raise HTTPException(status_code=404, detail="App not found")
+            raise HTTPException(404, "App not found")
         
-        offset = (page - 1) * page_size
-        
-        comments = db.query(Comment).filter(
-            Comment.app_id == app.id
-        ).order_by(Comment.created_at.desc()).offset(offset).limit(page_size).all()
-        
-        total = db.query(Comment).filter(Comment.app_id == app.id).count()
-        
-        reviews = [c for c in comments if c.rating is not None]
-        comment_list = [c for c in comments if c.review_id is not None]
-        
-        return {
-            "total": total,
-            "page": page,
-            "pageSize": page_size,
-            "reviews": reviews,
-            "comments": comment_list
-        }
+        # Map to response schema
+        return AppDetailSchema(
+            id=app.id,
+            packageName=app.package_name,
+            name=app.name,
+            icon=app.icon_url,
+            rating=RatingSchema(
+                average=app.avg_rating,
+                count=app.rating_count
+            ),
+            developer=DeveloperSchema(name=app.developer_name),
+            installs=app.installs,
+            category=app.category,
+            createdAt=app.created_at
+        )
 ```
 
-### 4. Create API Route
+### 4. Create Route
 ```python
-# routes/apps.py
-@router.get("/apps/{package_name}/reviews")
-def get_reviews(
+# app/api/routes/apps.py
+@router.get("/apps/{package_name}", response_model=AppDetailSchema)
+async def get_app_detail(
     package_name: str,
-    page: int = Query(1, ge=1),
-    pageSize: int = Query(20, ge=1, le=100)
-):
-    return app_service.get_reviews(package_name, page, pageSize)
+    db: AsyncSession = Depends(get_db),
+) -> AppDetailSchema:
+    service = AppService(db)
+    return await service.get_app_detail(package_name)
 ```
 
 ---
 
-## 🚀 Summary
+## 🚀 Implementation Checklist
 
-✅ 1 API endpoint duy nhất: `GET /api/apps/{package_name}/reviews`
-✅ Query database, phân trang, lấy reviews + comments
-✅ No tests, no complex validation
-✅ Done!
+- [ ] Update `app/db/models/app.py` - Add new columns (developer_name, installs, category)
+- [ ] Create `app/schemas/app.py` - Add RatingSchema, DeveloperSchema, AppDetailSchema
+- [ ] Update `app/services/app_service.py` - Add get_app_detail() method
+- [ ] Update `app/api/routes/apps.py` - Add GET /apps/{package_name} endpoint
+- [ ] Update `app/main.py` - Ensure router is registered
+- [ ] Test with sample data
+- [ ] Document in Swagger/OpenAPI
+
+---
+
+## 📋 Summary
+
+✅ 1 API endpoint: `GET /api/apps/{package_name}`
+✅ Returns app detail with rating, developer, installs, category
+✅ Uses existing App model with new fields
+✅ Simple service layer for data mapping
+✅ Async operations with proper error handling

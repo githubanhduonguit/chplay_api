@@ -6,17 +6,78 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
 
 from app.db.models import App, Comment
-from app.schemas import AuthorSchema, ReviewSchema, GetReviewsResponseSchema
+from app.schemas import (
+    AuthorSchema,
+    ReviewSchema,
+    GetReviewsResponseSchema,
+    RatingSchema,
+    DeveloperSchema,
+    AppDetailSchema,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class AppService:
-    """Service for handling app reviews and comments."""
+    """Service for handling app operations."""
 
     def __init__(self, db: AsyncSession):
         """Initialize service with async database session."""
         self.db = db
+
+    async def get_app_detail(self, package_name: str) -> AppDetailSchema:
+        """Get detailed information for an app by package_name.
+
+        Args:
+            package_name: The app's package name (e.g., com.vnpt.vnpttoken.vneid).
+
+        Returns:
+            AppDetailSchema with app information.
+
+        Raises:
+            HTTPException: If app not found (404) or database error (500).
+        """
+        try:
+            logger.info(f"Searching for app with package_name: {package_name}")
+            stmt = select(App).where(App.package_name == package_name)
+            result = await self.db.execute(stmt)
+            app = result.scalars().first()
+
+            if not app:
+                logger.warning(f"App not found: {package_name}")
+                raise HTTPException(status_code=404, detail="App not found")
+
+            logger.info(f"Found app: {app.id}")
+
+            # Build rating schema
+            rating = RatingSchema(
+                average=float(app.avg_rating) if app.avg_rating else 0.0,
+                count=app.rating_count or 0,
+            )
+
+
+            # Build app detail response
+            app_detail = AppDetailSchema(
+                id=app.id,
+                packageName=app.package_name,
+                name=app.name,
+                icon=app.icon_url,
+                rating=rating,
+                createdAt=app.created_at,
+            )
+
+            logger.info(f"Successfully retrieved app detail for: {package_name}")
+            return app_detail
+
+        except HTTPException:
+            # Re-raise HTTP exceptions as-is
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error in get_app_detail: {str(e)}", exc_info=True)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Database error: {str(e)}",
+            )
 
     async def get_reviews(
         self, package_name: str, page: int = 1, page_size: int = 20
@@ -104,7 +165,7 @@ class AppService:
                     logger.error(f"Error processing comment {comment.id}: {str(e)}", exc_info=True)
                     raise HTTPException(
                         status_code=500,
-                        detail=f"Error processing comment {comment.id}: {str(e)}"
+                        detail=f"Error processing comment {comment.id}: {str(e)}",
                     )
 
             logger.info(f"Processed {len(reviews)} reviews and {len(comment_list)} comments")
@@ -124,5 +185,5 @@ class AppService:
             logger.error(f"Unexpected error in get_reviews: {str(e)}", exc_info=True)
             raise HTTPException(
                 status_code=500,
-                detail=f"Database error: {str(e)}"
+                detail=f"Database error: {str(e)}",
             )
