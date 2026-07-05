@@ -11,7 +11,7 @@ Configures the app with:
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, AsyncIterator
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,11 +23,17 @@ from app.core.exceptions import AppError
 
 # ── API routers ──────────────────────────────────────────────────────
 
+try:
+    from app.api.routes.apps import router as apps_router
+except Exception as e:
+    print(f"Warning: Failed to import apps router: {e}")
+    apps_router = None
+
 from app.api.v1.documents import router as documents_router
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> Any:  # noqa: ANN401
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application lifespan: startup and shutdown hooks."""
     # Startup: ensure required directories exist
     settings.upload_path.mkdir(parents=True, exist_ok=True)
@@ -59,6 +65,8 @@ app.add_middleware(
 
 # ── Routers ──────────────────────────────────────────────────────────
 
+if apps_router:
+    app.include_router(apps_router)
 app.include_router(documents_router, prefix="/api/v1")
 
 

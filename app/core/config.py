@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
 
     # ── Database ─────────────────────────────────────────────────────
-    DATABASE_URL: str = "postgresql+asyncpg://user:password@localhost:5432/chplay_api"
+    DATABASE_URL: str = "postgresql+asyncpg://neondb_owner:npg_yeTS1N6jgDaz@ep-blue-math-aorankzj-pooler.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
 
     # ── Qdrant ───────────────────────────────────────────────────────
     QDRANT_URL: str = "http://localhost:6333"

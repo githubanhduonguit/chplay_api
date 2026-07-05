@@ -1,6 +1,17 @@
-def main():
-    print("Hello from chplay-api!")
+"""
+Application entry point.
 
+Runs the FastAPI application with Uvicorn server.
+"""
+
+import uvicorn
+
+from app.main import app
 
 if __name__ == "__main__":
-    main()
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000,
+        log_level="info",
+    )
