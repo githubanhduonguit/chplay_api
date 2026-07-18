@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
 
     # ── Database ─────────────────────────────────────────────────────
-    DATABASE_URL: str = "postgresql+asyncpg://neondb_owner:npg_yeTS1N6jgDaz@ep-blue-math-aorankzj-pooler.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+    DATABASE_URL: str = "postgresql+asyncpg://neondb_owner:npg_yeTS1N6jgDaz@ep-blue-math-aorankzj-pooler.c-2.ap-southeast-1.aws.neon.tech/neondb"
 
     # ── Qdrant ───────────────────────────────────────────────────────
     QDRANT_URL: str = "http://localhost:6333"
@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     # ── Retry & Timeout ──────────────────────────────────────────────
     RETRY_ATTEMPTS: int = 3
     TIMEOUT_SECONDS: int = 30
+
+    # ── Gemini / LLM ─────────────────────────────────────────────────
+    GEMINI_MODEL: str = "gemini-3.5-flash"
+    REVIEW_REPLY_BATCH_SIZE: int = 20
+    REVIEW_REPLY_MAX_LENGTH: int = 1000
 
     # ── Spark ────────────────────────────────────────────────────────
     SPARK_MASTER: str = "local[*]"

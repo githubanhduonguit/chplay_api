@@ -2,6 +2,11 @@
 
 from app.schemas.review import AuthorSchema, ReviewSchema, GetReviewsResponseSchema
 from app.schemas.app import RatingSchema, DeveloperSchema, AppDetailSchema
+from app.schemas.comment import (
+    CreateReviewRequest,
+    CreateCommentRequest,
+    CommentResponseSchema,
+)
 
 __all__ = [
     "AuthorSchema",
@@ -10,4 +15,7 @@ __all__ = [
     "RatingSchema",
     "DeveloperSchema",
     "AppDetailSchema",
+    "CreateReviewRequest",
+    "CreateCommentRequest",
+    "CommentResponseSchema",
 ]

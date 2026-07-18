@@ -23,7 +23,7 @@ class Comment(BaseMixin, Base):
 
     Attributes:
         app_id: Foreign key to the associated app.
-        review_id: External review ID (optional, for source tracking).
+        review_parent_id: ID of the parent review (for comments replying to a review).
         type: Type/category of the comment.
         author_type: Type of author (e.g., 'user', 'bot').
         author_name: Name of the comment author.
@@ -46,7 +46,7 @@ class Comment(BaseMixin, Base):
         nullable=False,
         index=True,
     )
-    review_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    review_parent_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     type: Mapped[str] = mapped_column(String(64), nullable=False)
     author_type: Mapped[str] = mapped_column(String(64), default="user", nullable=False)
     author_name: Mapped[str | None] = mapped_column(String(256), nullable=True)

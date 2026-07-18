@@ -21,7 +21,6 @@ class ReviewSchema(BaseModel):
 
     id: int
     reviewId: Optional[int] = None
-    type: str
     author: AuthorSchema
     rating: Optional[int] = None
     content: str

@@ -21,8 +21,6 @@ from sqlalchemy.ext.asyncio import (
 
 from app.core.config import settings
 
-from app.core.config import settings
-
 # Remove sslmode and channel_binding from URL if present
 database_url = settings.database_url_async.replace("?sslmode=require&channel_binding=require", "")
 

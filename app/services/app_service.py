@@ -1,7 +1,8 @@
 """Service for app-related operations."""
 
 import logging
-from sqlalchemy import func, select
+from datetime import datetime
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
 
@@ -13,6 +14,9 @@ from app.schemas import (
     RatingSchema,
     DeveloperSchema,
     AppDetailSchema,
+    CreateReviewRequest,
+    CreateCommentRequest,
+    CommentResponseSchema,
 )
 
 logger = logging.getLogger(__name__)
@@ -24,6 +28,14 @@ class AppService:
     def __init__(self, db: AsyncSession):
         """Initialize service with async database session."""
         self.db = db
+
+    async def _get_next_comment_id(self) -> int:
+        """Get next available comment ID."""
+        # Get max id from comments table
+        max_id_stmt = select(func.max(Comment.id))
+        result = await self.db.execute(max_id_stmt)
+        max_id = result.scalar()
+        return (max_id or 0) + 1
 
     async def get_app_detail(self, package_name: str) -> AppDetailSchema:
         """Get detailed information for an app by package_name.
@@ -54,7 +66,6 @@ class AppService:
                 average=float(app.avg_rating) if app.avg_rating else 0.0,
                 count=app.rating_count or 0,
             )
-
 
             # Build app detail response
             app_detail = AppDetailSchema(
@@ -147,9 +158,8 @@ class AppService:
 
                     review_item = ReviewSchema(
                         id=comment.id,
-                        reviewId=comment.review_id,
-                        type="review" if comment.rating is not None else "comment",
                         author=author,
+                        reviewId=comment.review_parent_id,
                         rating=comment.rating,
                         content=comment.content,
                         createdAt=comment.created_at,
@@ -159,7 +169,7 @@ class AppService:
 
                     if comment.rating is not None:
                         reviews.append(review_item)
-                    elif comment.review_id is not None:
+                    elif comment.review_parent_id is not None:
                         comment_list.append(review_item)
                 except Exception as e:
                     logger.error(f"Error processing comment {comment.id}: {str(e)}", exc_info=True)
@@ -183,6 +193,177 @@ class AppService:
             raise
         except Exception as e:
             logger.error(f"Unexpected error in get_reviews: {str(e)}", exc_info=True)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Database error: {str(e)}",
+            )
+
+    async def create_review(
+        self,
+        package_name: str,
+        request: CreateReviewRequest,
+    ) -> CommentResponseSchema:
+        """Create a new review for an app.
+
+        Args:
+            package_name: The app's package name.
+            request: Review creation request with authorName, rating, content.
+
+        Returns:
+            CommentResponseSchema with created review data.
+
+        Raises:
+            HTTPException: If app not found (404) or database error (500).
+        """
+        try:
+            logger.info(f"Creating review for app: {package_name}")
+
+            # Find app
+            stmt = select(App).where(App.package_name == package_name)
+            result = await self.db.execute(stmt)
+            app = result.scalars().first()
+
+            if not app:
+                logger.warning(f"App not found: {package_name}")
+                raise HTTPException(status_code=404, detail="App not found")
+
+            logger.info(f"Creating review for app_id: {app.id}")
+
+            # Get next available ID to avoid conflicts
+            next_id = await self._get_next_comment_id()
+            logger.info(f"Using comment id: {next_id}")
+
+            # Create comment record (review is a type of comment)
+            comment = Comment(
+                id=next_id,
+                app_id=app.id,
+                review_parent_id=None,
+                type="review",
+                author_type="user",
+                author_name=request.authorName,
+                rating=request.rating,
+                content=request.content,
+                absa_status="pending",
+                bot_reply_status="pending",
+                created_at=datetime.utcnow(),
+            )
+
+            self.db.add(comment)
+            await self.db.flush()  # Flush to get the ID
+            await self.db.commit()
+
+            logger.info(f"Review created with id: {comment.id}")
+
+            # Return response
+            return CommentResponseSchema(
+                id=comment.id,
+                appId=comment.app_id,
+                reviewId=comment.review_parent_id,
+                rating=comment.rating,
+                content=comment.content,
+                type=comment.type,
+                authorType=comment.author_type,
+                botReplyStatus=comment.bot_reply_status,
+                createdAt=comment.created_at,
+            )
+
+        except HTTPException:
+            await self.db.rollback()
+            raise
+        except Exception as e:
+            await self.db.rollback()
+            logger.error(f"Unexpected error in create_review: {str(e)}", exc_info=True)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Database error: {str(e)}",
+            )
+
+    async def create_comment(
+        self,
+        package_name: str,
+        review_id: int,
+        request: CreateCommentRequest,
+    ) -> CommentResponseSchema:
+        """Create a new comment on a review.
+
+        Args:
+            package_name: The app's package name.
+            review_id: ID of the parent review.
+            request: Comment creation request with authorName, content.
+
+        Returns:
+            CommentResponseSchema with created comment data.
+
+        Raises:
+            HTTPException: If app or review not found (404) or database error (500).
+        """
+        try:
+            logger.info(f"Creating comment for review {review_id} on app: {package_name}")
+
+            # Find app
+            app_stmt = select(App).where(App.package_name == package_name)
+            app_result = await self.db.execute(app_stmt)
+            app = app_result.scalars().first()
+
+            if not app:
+                logger.warning(f"App not found: {package_name}")
+                raise HTTPException(status_code=404, detail="App not found")
+
+            # Find review (parent comment)
+            review_stmt = select(Comment).where(
+                (Comment.id == review_id) & (Comment.app_id == app.id)
+            )
+            review_result = await self.db.execute(review_stmt)
+            review = review_result.scalars().first()
+
+            if not review:
+                logger.warning(f"Review {review_id} not found for app {package_name}")
+                raise HTTPException(status_code=404, detail="Review not found")
+
+            logger.info(f"Creating comment on review {review_id} for app_id: {app.id}")
+
+            # Get next available ID to avoid conflicts
+            next_id = await self._get_next_comment_id()
+            logger.info(f"Using comment id: {next_id}")
+
+            # Create comment record
+            comment = Comment(
+                id=next_id,
+                app_id=app.id,
+                review_parent_id=review_id,
+                type="comment",
+                author_type="user",
+                author_name=request.authorName,
+                rating=None,  # Comments don't have ratings
+                content=request.content,
+                created_at=datetime.utcnow(),
+            )
+
+            self.db.add(comment)
+            await self.db.flush()  # Flush to get the ID
+            await self.db.commit()
+
+            logger.info(f"Comment created with id: {comment.id}")
+
+            # Return response
+            return CommentResponseSchema(
+                id=comment.id,
+                appId=comment.app_id,
+                reviewId=comment.review_parent_id,
+                rating=comment.rating,
+                content=comment.content,
+                type=comment.type,
+                authorType=comment.author_type,
+                botReplyStatus=comment.bot_reply_status,
+                createdAt=comment.created_at,
+            )
+
+        except HTTPException:
+            await self.db.rollback()
+            raise
+        except Exception as e:
+            await self.db.rollback()
+            logger.error(f"Unexpected error in create_comment: {str(e)}", exc_info=True)
             raise HTTPException(
                 status_code=500,
                 detail=f"Database error: {str(e)}",

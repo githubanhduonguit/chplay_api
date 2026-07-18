@@ -4,7 +4,13 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.schemas import GetReviewsResponseSchema, AppDetailSchema
+from app.schemas import (
+    GetReviewsResponseSchema,
+    AppDetailSchema,
+    CreateReviewRequest,
+    CreateCommentRequest,
+    CommentResponseSchema,
+)
 from app.services import AppService
 
 router = APIRouter(prefix="/api", tags=["apps"])
@@ -54,3 +60,63 @@ async def get_reviews(
     """
     service = AppService(db)
     return await service.get_reviews(package_name, page, pageSize)
+
+
+@router.post(
+    "/apps/{package_name}/reviews",
+    response_model=CommentResponseSchema,
+    status_code=201,
+)
+async def create_review(
+    package_name: str,
+    request: CreateReviewRequest,
+    db: AsyncSession = Depends(get_db),
+) -> CommentResponseSchema:
+    """Create a new review for an app.
+
+    Args:
+        package_name: The app's package name (e.g., com.vnpt.vnpttoken.vneid).
+        request: Review creation request with authorName, rating, content.
+        db: Database session.
+
+    Returns:
+        CommentResponseSchema with created review data.
+
+    Raises:
+        400: If request validation fails.
+        404: If app not found.
+        500: If database error occurs.
+    """
+    service = AppService(db)
+    return await service.create_review(package_name, request)
+
+
+@router.post(
+    "/apps/{package_name}/reviews/{review_id}/comments",
+    response_model=CommentResponseSchema,
+    status_code=201,
+)
+async def create_comment(
+    package_name: str,
+    review_id: int,
+    request: CreateCommentRequest,
+    db: AsyncSession = Depends(get_db),
+) -> CommentResponseSchema:
+    """Create a new comment on a review.
+
+    Args:
+        package_name: The app's package name (e.g., com.vnpt.vnpttoken.vneid).
+        review_id: ID of the parent review.
+        request: Comment creation request with authorName, content.
+        db: Database session.
+
+    Returns:
+        CommentResponseSchema with created comment data.
+
+    Raises:
+        400: If request validation fails.
+        404: If app or review not found.
+        500: If database error occurs.
+    """
+    service = AppService(db)
+    return await service.create_comment(package_name, review_id, request)
