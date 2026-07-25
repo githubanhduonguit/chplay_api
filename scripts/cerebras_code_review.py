@@ -153,25 +153,38 @@ Return ONLY valid JSON."""
 
     def _review_line_detailed(self, file_path: str, line_num: int, line_content: str) -> dict:
         """Review một dòng code chi tiết"""
-        prompt = f"""Review this single line from {file_path} at line {line_num}:
+        prompt = f"""DETAILED CODE REVIEW - Find ALL issues in this line:
 
+File: {file_path}
 Line {line_num}: {line_content}
 
-Identify specific issues if any. Respond in JSON:
+Analyze for:
+1. Security: SQL injection, XSS, command injection, auth issues
+2. Performance: N+1, loops, memory, caching
+3. Logic: Off-by-one errors, null checks, type mismatches
+4. Quality: Naming, readability, complexity, dead code
+5. Best practices: Error handling, validation, documentation
+
+If you find issues, describe them SPECIFICALLY and exactly.
+Example BAD: "bad practice"
+Example GOOD: "Variable 'x' should be named 'user_count' - single letter vars are hard to understand"
+
+Respond as JSON:
 {{
   "line": {line_num},
   "file": "{file_path}",
+  "issues_found": true/false,
   "comments": [
     {{
       "severity": "critical|warning|info",
-      "issue": "<specific issue>",
-      "suggestion": "<how to fix>"
+      "category": "<exact type: security|performance|logic|quality|practice>",
+      "issue": "<SPECIFIC problem description>",
+      "suggestion": "<exact how to fix>"
     }}
   ]
 }}
 
-If no issues, return {{"line": {line_num}, "comments": []}}
-Return ONLY valid JSON."""
+Return ONLY valid JSON. If no issues: {{"line": {line_num}, "comments": [], "issues_found": false}}"""
 
         try:
             response = requests.post(
@@ -180,8 +193,8 @@ Return ONLY valid JSON."""
                 json={
                     "model": CEREBRAS_MODEL,
                     "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.2,
-                    "max_tokens": 200,
+                    "temperature": 0.1,  # Stricter
+                    "max_tokens": 400,   # More space for detail
                 },
                 timeout=10,
             )
@@ -200,9 +213,9 @@ Return ONLY valid JSON."""
                 result = json.loads(response_text.strip())
                 if result.get("comments"):
                     return result
-            return {"line": line_num, "comments": []}
-        except:
-            return {"line": line_num, "comments": []}
+            return {"line": line_num, "comments": [], "issues_found": False}
+        except Exception as e:
+            return {"line": line_num, "comments": [], "issues_found": False}
 
     def review_repository(self, root_dir: str = ".") -> list[dict]:
         """Review all code files in repository"""
