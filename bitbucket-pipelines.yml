@@ -1,0 +1,9 @@
+pipelines:
+  pull-requests:
+    "**":
+      - step:
+          name: AI Code Review
+          image: python:3.12
+          script:
+            - pip install requests
+            - python scripts/review.py
