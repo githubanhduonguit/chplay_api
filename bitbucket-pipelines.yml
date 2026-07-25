@@ -4,40 +4,40 @@ pipelines:
   pull-requests:
     '**':
       - step:
-          name: 🤖 AI Code Review - PR
+          name: 🤖 AI Code Review - PR (Inline Comments)
           script:
             - pip install -r requirements.txt
-            - python scripts/gemini_pr_review.py
+            - python scripts/cerebras_pr_review.py
           artifacts:
             - pr-review.json
 
   branches:
     develop:
       - step:
-          name: 🤖 AI Code Review - Develop
+          name: 🤖 Full Code Review - Inline Comments
           trigger: manual
           script:
             - pip install -r requirements.txt
-            - python scripts/gemini_code_review.py
+            - python scripts/cerebras_code_review.py
           artifacts:
-            - code-review-report.md
+            - code-review-inline.md
 
     main:
       - step:
-          name: 🤖 AI Code Review - Main
+          name: 🤖 Full Code Review - Inline Comments
           trigger: manual
           script:
             - pip install -r requirements.txt
-            - python scripts/gemini_code_review.py
+            - python scripts/cerebras_code_review.py
           artifacts:
-            - code-review-report.md
+            - code-review-inline.md
 
   custom:
     full-review:
       - step:
-          name: 🤖 Full Repository Code Review
+          name: 🤖 Full Repository Review (Inline Comments)
           script:
             - pip install -r requirements.txt
-            - python scripts/gemini_code_review.py
+            - python scripts/cerebras_code_review.py
           artifacts:
-            - code-review-report.md
+            - code-review-inline.md
