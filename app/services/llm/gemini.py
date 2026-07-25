@@ -148,10 +148,11 @@ class GeminiReviewReplyService:
         Returns:
             The raw text response from Gemini.
         """
-        import google.generativeai as genai
+        from google.generativeai.client import configure
+        from google.generativeai.generative_models import GenerativeModel
 
-        genai.configure(api_key=self.api_key)
-        model = genai.GenerativeModel(
+        configure(api_key=self.api_key)
+        model = GenerativeModel(
             model_name=self.model_name,
             system_instruction=self.SYSTEM_PROMPT,
         )
