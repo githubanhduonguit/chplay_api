@@ -13,8 +13,9 @@ import requests
 
 # Configuration
 CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY")
-CEREBRAS_MODEL = "llama-3.1-70b"
-CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1"
+CEREBRAS_MODEL = "poolside/laguna-s-2.1:free"
+CEREBRAS_BASE_URL = "https://openrouter.ai/api/v1"
+
 
 EXCLUDE_DIRS = {
     '.git', '__pycache__', '.venv', 'venv', 'node_modules', '.pytest_cache', 
