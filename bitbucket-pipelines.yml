@@ -1,9 +1,86 @@
+image: python:3.11
+
+definitions:
+  steps:
+    - step: &code-review
+        name: AI Code Review with Gemini
+        trigger: manual
+        script:
+          - pip install google-generativeai requests
+          - python scripts/gemini_code_review.py
+        artifacts:
+          - code-review-report.md
+        after-script:
+          - |
+            if [ -f code-review-report.md ]; then
+              echo "✓ Code review report generated"
+            fi
+
+    - step: &lint-check
+        name: Lint & Format Check
+        script:
+          - pip install flake8 black pylint
+          - echo "Running Flake8..."
+          - flake8 . --count --statistics --show-source || true
+          - echo "Checking Black formatting..."
+          - black --check . --quiet || echo "Some files need formatting"
+
+    - step: &unit-tests
+        name: Unit Tests
+        script:
+          - pip install pytest pytest-cov
+          - pytest --cov=. --cov-report=xml
+        after-script:
+          - |
+            if [ -f coverage.xml ]; then
+              echo "✓ Test coverage report generated"
+            fi
+
+    - step: &security-scan
+        name: Security Scan
+        script:
+          - pip install bandit safety
+          - echo "Running Bandit security scan..."
+          - bandit -r . -f json -o bandit-report.json || true
+          - echo "Checking dependencies vulnerabilities..."
+          - safety check --json > safety-report.json || true
+
 pipelines:
-  pull-requests:
-    "**":
+  branches:
+    develop:
+      - step: *lint-check
+      - step: *unit-tests
+      - step: *security-scan
       - step:
-          name: AI Code Review
-          image: python:3.12
+          name: Code Review Approval Gate
+          trigger: manual
           script:
-            - pip install requests
-            - python scripts/review.py
+            - echo "Manual code review requested"
+
+    main:
+      - step: *lint-check
+      - step: *unit-tests
+      - step: *security-scan
+      - step:
+          name: Production Deployment
+          deployment: production
+          trigger: manual
+          script:
+            - echo "Deploying to production..."
+
+  pull-requests:
+    '**':
+      - step: *lint-check
+      - step: *unit-tests
+      - step:
+          name: PR Code Review
+          script:
+            - pip install google-generativeai gitpython
+            - python scripts/gemini_pr_review.py
+
+  custom:
+    full-review:
+      - step: *lint-check
+      - step: *unit-tests
+      - step: *security-scan
+      - step: *code-review
