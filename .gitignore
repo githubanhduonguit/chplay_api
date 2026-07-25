@@ -41,3 +41,7 @@ derby.log
 # Uploads
 uploads/
 media/
+
+.task
+.github
+.neurotrace
