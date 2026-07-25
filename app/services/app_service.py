@@ -123,6 +123,7 @@ class AppService:
             logger.info(f"Fetching comment count for app_id: {app_id}")
             count_stmt = select(func.count()).select_from(Comment).where(Comment.app_id == app_id)
             count_result = await self.db.execute(count_stmt)
+            
             total = count_result.scalar()
             logger.info(f"Total comments: {total}")
 
