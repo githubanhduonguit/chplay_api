@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     # ── Qdrant ───────────────────────────────────────────────────────
     QDRANT_URL: str = "http://localhost:6333"
     QDRANT_API_KEY: str | None = None
+    QDRANT_COLLECTION: str = "documents"
+    QDRANT_TIMEOUT: int = 30
 
     # ── LLM / AI ─────────────────────────────────────────────────────
     GEMINI_API_KEY: str = ""
@@ -40,6 +42,9 @@ class Settings(BaseSettings):
     # ── PhoBERT ──────────────────────────────────────────────────────
     PHOBERT_API_URL: str = ""
     PHOBERT_API_KEY: str = ""
+    PHOBERT_TIMEOUT: int = 30
+    PHOBERT_MAX_RETRIES: int = 3
+    PHOBERT_BATCH_SIZE: int = 32
 
     # ── Embedding ────────────────────────────────────────────────────
     EMBEDDING_API_URL: str = "http://localhost:8001/v1/embeddings"
@@ -61,12 +66,24 @@ class Settings(BaseSettings):
 
     # ── Gemini / LLM ─────────────────────────────────────────────────
     GEMINI_MODEL: str = "gemini-3.5-flash"
+    LITELLM_MODEL: str = "gemini/gemini-3.5-flash"
+    LITELLM_FALLBACK_MODELS: str = ""  # comma-separated: "gemini/gemini-1.5-flash,openai/gpt-4o-mini"
+    LITELLM_TIMEOUT: int = 60
+    LITELLM_MAX_RETRIES: int = 3
     REVIEW_REPLY_BATCH_SIZE: int = 20
     REVIEW_REPLY_MAX_LENGTH: int = 1000
 
     # ── Spark ────────────────────────────────────────────────────────
     SPARK_MASTER: str = "local[*]"
     SPARK_APP_NAME: str = "chplay-api"
+
+    # ── Chunking ─────────────────────────────────────────────────────
+    CHUNK_SIZE: int = 512
+    CHUNK_OVERLAP: int = 64
+
+    # ── Scheduler ────────────────────────────────────────────────────
+    SCHEDULER_ENABLED: bool = False
+    SCHEDULER_TIMEZONE: str = "Asia/Ho_Chi_Minh"
 
     # ── Paths ────────────────────────────────────────────────────────
     UPLOAD_DIR: str = "uploads"
