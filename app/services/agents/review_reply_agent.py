@@ -4,7 +4,7 @@ Acts as the middle layer between the job and the LLM service:
 1. Normalizes and validates input.
 2. Calls Gemini via GeminiReviewReplyService.
 3. Validates the generated output.
-4. Provides a hook for future RAG context retrieval.
+4. Provides RAG + Web search context retrieval.
 """
 
 from __future__ import annotations
@@ -13,11 +13,14 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.core.config import settings
 from app.db.models.comment import Comment
 from app.services.llm.gemini import (
     GeminiReplyError,
     GeminiReviewReplyService,
 )
+from app.services.web_search.schemas import WebSearchRequest
+from app.services.web_search.service import WebSearchService
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +43,8 @@ class ReviewReplyResult:
     success: bool
     reply: str | None = None
     error: str | None = None
+    web_search_used: bool = False
+    source_mode: str | None = None
 
 
 class ReviewReplyAgent:
@@ -48,17 +53,21 @@ class ReviewReplyAgent:
     Args:
         llm_service: The Gemini review reply service instance.
         reply_max_length: Maximum allowed reply length in characters.
+        web_search_service: WebSearchService for web context retrieval.
+            If None, web search is disabled for review replies.
     """
 
     def __init__(
         self,
         llm_service: GeminiReviewReplyService | None = None,
         reply_max_length: int | None = None,
+        web_search_service: WebSearchService | None = None,
     ) -> None:
         self.llm_service = llm_service or GeminiReviewReplyService()
         self.reply_max_length = reply_max_length or getattr(
             self.llm_service, "reply_max_length", 1000
         )
+        self.web_search_service = web_search_service or WebSearchService()
 
     async def run(self, review: Comment) -> ReviewReplyResult:
         """Process a review and generate a bot reply.
@@ -83,16 +92,22 @@ class ReviewReplyAgent:
             # Step 3: Prepare metadata
             metadata = self._prepare_metadata(input_data)
 
-            # Step 4: Get retrieval context (placeholder for future RAG)
+            # Step 4: Get retrieval context (RAG + Web search)
             rag_context = await self.get_retrieval_context(input_data)
+            web_context = await self.get_web_context(input_data)
 
-            # Step 5: Generate reply via LLM
+            # Step 5: Build merged context if web results exist
+            merged_context = self._build_merged_context(rag_context, web_context)
+            if merged_context:
+                metadata["rag_context"] = merged_context
+
+            # Step 6: Generate reply via LLM
             reply = await self.llm_service.generate_reply(
                 review_content=input_data.content,
                 metadata=metadata,
             )
 
-            # Step 6: Validate the generated reply
+            # Step 7: Validate the generated reply
             validation_error = self._validate_reply(reply)
             if validation_error:
                 return ReviewReplyResult(
@@ -100,10 +115,16 @@ class ReviewReplyAgent:
                 )
 
             logger.info(
-                "Successfully generated reply for review %s.",
+                "Successfully generated reply for review %s (web_search=%s).",
                 input_data.review_id,
+                bool(web_context),
             )
-            return ReviewReplyResult(success=True, reply=reply)
+            return ReviewReplyResult(
+                success=True,
+                reply=reply,
+                web_search_used=bool(web_context),
+                source_mode="rag_plus_web" if rag_context and web_context else "rag_only",
+            )
 
         except GeminiReplyError as e:
             logger.error(
@@ -195,6 +216,98 @@ class ReviewReplyAgent:
             A list of context strings. Currently returns empty list.
         """
         return []
+
+    async def get_web_context(
+        self, input_data: ReviewReplyInput
+    ) -> list[str]:
+        """Retrieve web context for the reply.
+
+        Uses web search to find relevant information when
+        RAG context is insufficient and web search is enabled.
+
+        For review replies, web search is conservative:
+        - Only searches if query is informative (not just complaints).
+        - Only returns top 3 results max.
+        - Useful for answering "how to" or "when" questions.
+
+        Args:
+            input_data: The normalized input.
+
+        Returns:
+            A list of web context strings. Empty if disabled or not needed.
+        """
+        if not self.web_search_service.is_ready:
+            return []
+
+        content = input_data.content.lower()
+
+        # Check if the review might benefit from web search
+        web_search_triggers = [
+            "how to", "cách", "làm sao", "khi nào", "when",
+            "version mới", "new version", "update", "cập nhật",
+            "tính năng", "feature", "tại sao", "why",
+            "khắc phục", "fix", "hướng dẫn", "guide",
+        ]
+
+        if not any(trigger in content for trigger in web_search_triggers):
+            return []
+
+        try:
+            request = WebSearchRequest(
+                query=input_data.content[:300],
+                top_k=3,
+                language="lang_vi",
+                safe_search="active",
+            )
+
+            response = await self.web_search_service.search(request)
+
+            if not response.has_results:
+                return []
+
+            # Format context
+            web_results: list[str] = []
+            for i, result in enumerate(response.results, 1):
+                if result.title or result.snippet:
+                    web_results.append(
+                        f"[W{i}] {result.title}\n"
+                        f"URL: {result.url}\n"
+                        f"{result.snippet}"
+                    )
+
+            return web_results
+
+        except Exception as e:
+            logger.warning("Web search context retrieval failed: %s", e)
+            return []
+
+    def _build_merged_context(
+        self,
+        rag_context: list[str],
+        web_context: list[str],
+    ) -> str | None:
+        """Build merged context from RAG and web sources.
+
+        Args:
+            rag_context: Context strings from RAG retrieval.
+            web_context: Context strings from web search.
+
+        Returns:
+            A merged context string, or None if both are empty.
+        """
+        parts: list[str] = []
+
+        if rag_context:
+            parts.append("=== NGUỒN NỘI BỘ ===")
+            parts.extend(rag_context)
+
+        if web_context:
+            if parts:
+                parts.append("")
+            parts.append("=== NGUỒN WEB ===")
+            parts.extend(web_context)
+
+        return "\n".join(parts) if parts else None
 
     def _validate_reply(self, reply: str) -> str | None:
         """Validate the generated reply.

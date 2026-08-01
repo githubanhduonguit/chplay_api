@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from app.core.config import settings
 from app.graph.state import GraphState
 from app.services.bm25.indexer import BM25Indexer
 from app.services.embedding.service import EmbeddingService
@@ -21,6 +22,8 @@ from app.services.qdrant.service import QdrantService
 from app.services.retrieval.hybrid import HybridSearchService
 from app.services.retrieval.schemas import HybridSearchRequest, HybridSearchResultItem
 from app.services.retrieval.reranker import RerankerService
+from app.services.web_search.schemas import WebSearchRequest, WebSearchResult
+from app.services.web_search.service import WebSearchService
 
 logger = logging.getLogger(__name__)
 
@@ -311,6 +314,345 @@ def create_context_builder_node(
     return build_context
 
 
+# ── Web Search Nodes ──────────────────────────────────────────────────
+
+
+def create_web_search_decision_node(
+    min_rag_score: float | None = None,
+) -> callable:
+    """Create a node that decides whether web search is needed.
+
+    The decision is based on:
+    1. RAG search results are empty → need web search.
+    2. Context builder returned "No relevant documents found." → need web search.
+    3. Top RAG result score is below min_rag_score → need web search.
+    4. Query explicitly needs external/real-time info (detected by certain keywords).
+
+    Args:
+        min_rag_score: Minimum RAG score threshold (default from settings).
+
+    Returns:
+        An async function that takes GraphState and returns updated state.
+    """
+    threshold = min_rag_score if min_rag_score is not None else settings.WEB_SEARCH_MIN_RAG_SCORE
+
+    async def decide_web_search(state: GraphState) -> dict[str, Any]:
+        """Decide if web search is needed based on RAG results.
+
+        Args:
+            state: Current graph state with search_results, reranked_results,
+                   context, classification, and metadata.
+
+        Returns:
+            Updated state with web_search_needed and web_search_reason.
+        """
+        query = state.get("query", "")
+        reranked = state.get("reranked_results") or state.get("search_results", [])
+        context = state.get("context", "")
+        classification = state.get("classification", {})
+        metadata = state.get("metadata", {}) or {}
+
+        # Skip web search for internal/ticket-specific queries
+        if _should_skip_web_search(query, classification, metadata):
+            return {
+                "web_search_needed": False,
+                "web_search_reason": "Query relates to internal data (reviews, tickets, DB).",
+            }
+
+        # Case 1: No RAG results at all
+        if not reranked:
+            logger.debug("Web search decision: NEEDED (no RAG results)")
+            return {
+                "web_search_needed": True,
+                "web_search_reason": "RAG search returned no results.",
+            }
+
+        # Case 2: Context builder found nothing relevant
+        if context == "No relevant documents found.":
+            logger.debug("Web search decision: NEEDED (RAG context empty)")
+            return {
+                "web_search_needed": True,
+                "web_search_reason": "RAG context builder found no relevant documents.",
+            }
+
+        # Case 3: Top score below threshold
+        top_scores = [r.get("score", 0.0) for r in reranked[:3] if r.get("score") is not None]
+        if top_scores and max(top_scores) < threshold:
+            logger.debug(
+                "Web search decision: NEEDED (top RAG score %.3f < threshold %.3f)",
+                max(top_scores),
+                threshold,
+            )
+            return {
+                "web_search_needed": True,
+                "web_search_reason": f"Top RAG score ({max(top_scores):.3f}) below threshold ({threshold:.3f}).",
+            }
+
+        # Case 4: RAG has good results — no web search needed
+        logger.debug(
+            "Web search decision: NOT needed (RAG has %d results with sufficient scores)",
+            len(reranked),
+        )
+        return {
+            "web_search_needed": False,
+            "web_search_reason": "RAG search has sufficient results.",
+        }
+
+    return decide_web_search
+
+
+def _should_skip_web_search(
+    query: str,
+    classification: dict[str, Any] | None,
+    metadata: dict[str, Any] | None,
+) -> bool:
+    """Check if web search should be skipped for this query.
+
+    Skips web search for queries that are clearly about internal data
+    such as app reviews, tickets, or database-specific information.
+
+    Args:
+        query: The user's query.
+        classification: PhoBERT classification result.
+        metadata: Additional metadata from the caller.
+
+    Returns:
+        True if web search should be skipped.
+    """
+    query_lower = query.lower()
+
+    # Keywords indicating internal/ticket/review queries
+    internal_keywords = [
+        "review", "ticket", "bug", "app version", "phiên bản",
+        "lỗi", "khiếu nại", "báo cáo", "rating", "đánh giá",
+        "comment", "bình luận", "reply", "trả lời",
+        "status", "trạng thái", "when will", "bao giờ",
+    ]
+
+    for keyword in internal_keywords:
+        if keyword in query_lower:
+            logger.debug("Skipping web search: query contains internal keyword '%s'", keyword)
+            return True
+
+    # Check classification if available
+    if classification:
+        label = classification.get("label", "")
+        if label in ("bug_report", "feature_request", "complaint", "support_ticket"):
+            logger.debug("Skipping web search: classified as '%s'", label)
+            return True
+
+    return False
+
+
+def create_web_search_node(
+    web_search_service: WebSearchService | None = None,
+) -> callable:
+    """Create a node that performs web search.
+
+    Only calls the web search provider when:
+    - web_search_needed is True
+    - WEB_SEARCH_ENABLED is True
+
+    Args:
+        web_search_service: Injected WebSearchService.
+
+    Returns:
+        An async function that takes GraphState and returns updated state.
+    """
+    search_service = web_search_service or WebSearchService()
+
+    async def web_search(state: GraphState) -> dict[str, Any]:
+        """Execute web search if needed.
+
+        Args:
+            state: Current graph state with query/rewritten_query
+                   and web_search_needed flag.
+
+        Returns:
+            Updated state with web_search_results.
+        """
+        web_search_needed = state.get("web_search_needed", False)
+        if not web_search_needed:
+            return {"web_search_results": []}
+
+        # Check if service is ready
+        if not search_service.is_ready:
+            logger.warning("Web search requested but service is not enabled/configured")
+            return {"web_search_results": []}
+
+        query = state.get("rewritten_query") or state.get("query", "")
+        if not query:
+            logger.warning("Web search requested but no query available")
+            return {"web_search_results": []}
+
+        try:
+            request = WebSearchRequest(
+                query=query,
+                top_k=settings.WEB_SEARCH_TOP_K,
+                language=settings.WEB_SEARCH_LANGUAGE,
+                safe_search=settings.WEB_SEARCH_SAFE_SEARCH,
+                timeout=settings.WEB_SEARCH_TIMEOUT,
+            )
+
+            response = await search_service.search(request)
+
+            # Convert to serializable dicts
+            results = [
+                {
+                    "title": item.title,
+                    "url": item.url,
+                    "snippet": item.snippet,
+                    "source": item.source,
+                    "score": item.score,
+                    "published_at": item.published_at.isoformat() if item.published_at else None,
+                }
+                for item in response.results
+            ]
+
+            logger.debug(
+                "Web search returned %d results for '%s'",
+                len(results),
+                query[:100],
+            )
+            return {"web_search_results": results}
+
+        except Exception as e:
+            logger.error("Web search failed: %s", e)
+            return {"web_search_results": []}
+
+    return web_search
+
+
+def create_web_context_builder_node(
+    max_chars: int = 4000,
+) -> callable:
+    """Create a node that builds formatted web context from search results.
+
+    Each result is formatted as:
+        [W<N>] <title>
+        URL: <url>
+        <snippet>
+
+    Args:
+        max_chars: Maximum characters for web context.
+
+    Returns:
+        An async function that takes GraphState and returns updated state.
+    """
+    async def build_web_context(state: GraphState) -> dict[str, Any]:
+        """Format web search results into a context string.
+
+        Args:
+            state: Current graph state with web_search_results.
+
+        Returns:
+            Updated state with web_context and citations.
+        """
+        results = state.get("web_search_results", [])
+        if not results:
+            return {"web_context": "", "citations": []}
+
+        context_parts: list[str] = []
+        citations: list[dict[str, Any]] = []
+        char_count = 0
+
+        for i, result in enumerate(results, 1):
+            title = result.get("title", "Không có tiêu đề")
+            url = result.get("url", "")
+            snippet = result.get("snippet", "")
+
+            # Skip results without URL or very short snippets
+            if not url or len(snippet.strip()) < 10:
+                continue
+
+            block = f"[W{i}] {title}\nURL: {url}\n{snippet}"
+
+            if char_count + len(block) > max_chars:
+                remaining = max_chars - char_count
+                if remaining > 100:
+                    context_parts.append(block[:remaining] + "...")
+                    citations.append({"index": i, "title": title, "url": url})
+                break
+
+            context_parts.append(block)
+            char_count += len(block)
+            citations.append({"index": i, "title": title, "url": url})
+
+        web_context = "\n\n".join(context_parts) if context_parts else ""
+
+        logger.debug("Web context built with %d citations", len(citations))
+        return {"web_context": web_context, "citations": citations}
+
+    return build_web_context
+
+
+def create_merge_context_node() -> callable:
+    """Create a node that merges RAG context and web context.
+
+    Priority: RAG context first, then web context.
+    Sets source_mode to indicate which sources are used.
+
+    Returns:
+        An async function that takes GraphState and returns updated state.
+    """
+    async def merge_context(state: GraphState) -> dict[str, Any]:
+        """Merge RAG and web context into a single context string.
+
+        Args:
+            state: Current graph state with context and web_context.
+
+        Returns:
+            Updated state with merged_context and source_mode.
+        """
+        rag_context = state.get("context", "")
+        web_context = state.get("web_context", "")
+        has_rag = bool(rag_context and rag_context != "No relevant documents found.")
+        has_web = bool(web_context and web_context.strip())
+
+        # Determine source mode
+        if has_rag and has_web:
+            source_mode = "rag_plus_web"
+        elif has_rag:
+            source_mode = "rag_only"
+        elif has_web:
+            source_mode = "web_only"
+        else:
+            source_mode = "none"
+
+        # Build merged context
+        merged_parts: list[str] = []
+
+        if has_rag:
+            merged_parts.append("=== NGUỒN NỘI BỘ (DỮ LIỆU APP) ===\n")
+            merged_parts.append(rag_context)
+
+        if has_web:
+            merged_parts.append("\n\n=== NGUỒN WEB ===\n")
+            merged_parts.append(web_context)
+
+        if not merged_parts:
+            merged_context = "Không tìm thấy thông tin liên quan từ cả nguồn nội bộ và web."
+        else:
+            merged_context = "\n".join(merged_parts)
+
+        logger.debug(
+            "Context merged: source_mode=%s, rag_len=%d, web_len=%d",
+            source_mode,
+            len(rag_context) if has_rag else 0,
+            len(web_context) if has_web else 0,
+        )
+
+        return {
+            "merged_context": merged_context,
+            "source_mode": source_mode,
+        }
+
+    return merge_context
+
+
+# ── LLM Answer Node ───────────────────────────────────────────────────
+
+
 def create_llm_answer_node(
     llm_service: LiteLLMService,
     system_prompt: str | None = None,
@@ -325,14 +667,21 @@ def create_llm_answer_node(
         An async function that takes GraphState and returns updated state.
     """
     default_system_prompt = (
-        "Bạn là trợ lý AI chuyên nghiệp. Dựa vào ngữ cảnh được cung cấp, "
-        "hãy trả lời câu hỏi của người dùng một cách chính xác và hữu ích.\n\n"
+        "Bạn là trợ lý AI chuyên nghiệp hỗ trợ người dùng về ứng dụng trên CH Play. "
+        "Dựa vào ngữ cảnh được cung cấp, hãy trả lời câu hỏi của người dùng một cách chính xác và hữu ích.\n\n"
         "NGUYÊN TẮC:\n"
-        "1. Chỉ trả lời dựa trên thông tin trong ngữ cảnh được cung cấp.\n"
-        "2. Nếu ngữ cảnh không có đủ thông tin, hãy nói rõ là không tìm thấy.\n"
-        "3. KHÔNG bịa đặt thông tin hoặc suy luận quá xa.\n"
-        "4. Trả lời bằng tiếng Việt, ngắn gọn và đúng trọng tâm.\n"
-        "5. Trích dẫn nguồn nếu có thể (ví dụ: [1], [2])."
+        "1. Ưu tiên thông tin từ NGUỒN NỘI BỘ (dữ liệu app, review, ticket) nếu có.\n"
+        "2. Chỉ dùng thông tin từ NGUỒN WEB khi nguồn nội bộ không đủ dữ liệu.\n"
+        "3. Nếu cả hai nguồn đều không có thông tin đủ tin cậy, hãy nói rõ là không tìm thấy.\n"
+        "4. KHÔNG bịa đặt thông tin hoặc suy luận quá xa.\n"
+        "5. Trả lời bằng tiếng Việt, ngắn gọn và đúng trọng tâm.\n"
+        "6. Trích dẫn nguồn rõ ràng:\n"
+        "   - Dùng [1], [2] cho thông tin từ nguồn nội bộ (RAG).\n"
+        "   - Dùng [W1], [W2] cho thông tin từ nguồn web.\n"
+        "   - Khi trích dẫn nguồn web, luôn kèm URL đầy đủ.\n"
+        "7. Nếu câu trả lời CHỈ dựa trên nguồn web, hãy nói rõ: "
+        "'Lưu ý: Thông tin này được lấy từ nguồn web, không phải dữ liệu nội bộ của ứng dụng.'\n"
+        "8. Nếu nguồn web mâu thuẫn với nguồn nội bộ, ưu tiên nguồn nội bộ và giải thích sự khác biệt."
     )
 
     prompt_template = default_system_prompt if system_prompt is None else system_prompt
@@ -341,16 +690,32 @@ def create_llm_answer_node(
         """Generate the final answer using the LLM.
 
         Args:
-            state: Current graph state with context and query.
+            state: Current graph state with merged_context (or context) and query.
 
         Returns:
             Updated state with the final answer.
         """
         query = state.get("query", "")
-        context = state.get("context", "")
+        # Use merged_context if available, otherwise fall back to regular context
+        context = state.get("merged_context") or state.get("context", "")
+        source_mode = state.get("source_mode", "rag_only")
 
         if not query:
             return {"answer": "No question provided.", "error": None}
+
+        # Build user prompt with context
+        if source_mode == "none":
+            user_content = (
+                f"Câu hỏi: {query}\n\n"
+                f"Xin lỗi, không tìm thấy thông tin liên quan từ cả nguồn nội bộ và web. "
+                f"Hãy trả lời rằng bạn không thể trả lời câu hỏi này vì thiếu thông tin."
+            )
+        else:
+            user_content = (
+                f"Ngữ cảnh:\n{context}\n\n"
+                f"Câu hỏi: {query}\n\n"
+                f"Trả lời:"
+            )
 
         messages = [
             LLMMessage(
@@ -359,11 +724,7 @@ def create_llm_answer_node(
             ),
             LLMMessage(
                 role="user",
-                content=(
-                    f"Ngữ cảnh:\n{context}\n\n"
-                    f"Câu hỏi: {query}\n\n"
-                    f"Trả lời:"
-                ),
+                content=user_content,
             ),
         ]
 

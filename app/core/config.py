@@ -77,6 +77,17 @@ class Settings(BaseSettings):
     SPARK_MASTER: str = "local[*]"
     SPARK_APP_NAME: str = "chplay-api"
 
+    # ── Web Search ────────────────────────────────────────────────────
+    WEB_SEARCH_ENABLED: bool = False
+    WEB_SEARCH_PROVIDER: str = "google_custom_search"
+    WEB_SEARCH_API_KEY: str = ""
+    WEB_SEARCH_ENGINE_ID: str = ""  # Google Custom Search Engine ID (cx)
+    WEB_SEARCH_TIMEOUT: int = 15
+    WEB_SEARCH_TOP_K: int = 5
+    WEB_SEARCH_MIN_RAG_SCORE: float = 0.3
+    WEB_SEARCH_LANGUAGE: str = "lang_vi"
+    WEB_SEARCH_SAFE_SEARCH: str = "active"
+
     # ── Chunking ─────────────────────────────────────────────────────
     CHUNK_SIZE: int = 512
     CHUNK_OVERLAP: int = 64

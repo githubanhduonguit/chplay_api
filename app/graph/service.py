@@ -23,6 +23,7 @@ from app.services.phobert.client import PhoBERTClient
 from app.services.qdrant.service import QdrantService
 from app.services.retrieval.hybrid import HybridSearchService
 from app.services.retrieval.reranker import RerankerService
+from app.services.web_search.service import WebSearchService
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,14 @@ class GraphQueryResult:
         classification: PhoBERT classification result (if available).
         metadata: Run metadata (duration, node timings, etc.).
         error: Error message if the pipeline failed.
+
+        # Web search fields
+        web_search_needed: Whether web search was triggered.
+        web_search_reason: Reason for (not) triggering web search.
+        web_search_results: Raw web search results.
+        web_context: Formatted web context used.
+        source_mode: Source indicator (rag_only, web_only, rag_plus_web).
+        citations: Citation references with URLs.
     """
 
     def __init__(
@@ -47,6 +56,13 @@ class GraphQueryResult:
         classification: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
         error: str | None = None,
+        # Web search fields
+        web_search_needed: bool | None = None,
+        web_search_reason: str | None = None,
+        web_search_results: list[dict[str, Any]] | None = None,
+        web_context: str | None = None,
+        source_mode: str | None = None,
+        citations: list[dict[str, Any]] | None = None,
     ) -> None:
         self.query = query
         self.answer = answer
@@ -54,6 +70,12 @@ class GraphQueryResult:
         self.classification = classification
         self.metadata = metadata or {}
         self.error = error
+        self.web_search_needed = web_search_needed
+        self.web_search_reason = web_search_reason
+        self.web_search_results = web_search_results
+        self.web_context = web_context
+        self.source_mode = source_mode
+        self.citations = citations
 
 
 class GraphService:
@@ -82,6 +104,7 @@ class GraphService:
         bm25_indexer: BM25Indexer | None = None,
         phobert_client: PhoBERTClient | None = None,
         reranker_service: RerankerService | None = None,
+        web_search_service: WebSearchService | None = None,
         collection: str | None = None,
     ) -> None:
         self.graph_builder = GraphBuilder(
@@ -92,6 +115,7 @@ class GraphService:
             bm25_indexer=bm25_indexer,
             phobert_client=phobert_client,
             reranker_service=reranker_service,
+            web_search_service=web_search_service,
             collection=collection,
         )
         self._compiled_graph: Any = None
@@ -136,16 +160,31 @@ class GraphService:
             "metadata": metadata,
         }
 
+        # Initialize web search fields
+        initial_state.update({
+            "web_search_needed": None,
+            "web_search_reason": None,
+            "web_search_results": None,
+            "web_context": None,
+            "merged_context": None,
+            "source_mode": None,
+            "citations": None,
+        })
+
         try:
             # Run the graph
             result_state = await self._compiled_graph.ainvoke(initial_state)
 
             duration = time.monotonic() - start_time
             logger.info(
-                "RAG pipeline completed in %.2fs for query: '%s'",
+                "RAG pipeline completed in %.2fs for query: '%s' (source: %s)",
                 duration,
                 query[:100],
+                result_state.get("source_mode", "unknown"),
             )
+
+            num_rag = len(result_state.get("reranked_results") or result_state.get("search_results") or [])
+            num_web = len(result_state.get("web_search_results") or [])
 
             return GraphQueryResult(
                 query=query,
@@ -155,10 +194,20 @@ class GraphService:
                 metadata={
                     "duration_seconds": round(duration, 3),
                     "rewritten_query": result_state.get("rewritten_query"),
-                    "num_results": len(result_state.get("reranked_results") or result_state.get("search_results") or []),
+                    "num_rag_results": num_rag,
+                    "num_web_results": num_web,
+                    "source_mode": result_state.get("source_mode"),
+                    "web_search_reason": result_state.get("web_search_reason"),
                     **({"custom": metadata} if metadata else {}),
                 },
                 error=result_state.get("error"),
+                # Web search fields
+                web_search_needed=result_state.get("web_search_needed"),
+                web_search_reason=result_state.get("web_search_reason"),
+                web_search_results=result_state.get("web_search_results"),
+                web_context=result_state.get("web_context"),
+                source_mode=result_state.get("source_mode"),
+                citations=result_state.get("citations"),
             )
 
         except Exception as e:
