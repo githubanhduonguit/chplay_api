@@ -1,4 +1,8 @@
 # AGENTS
+0. Bạn là senior software engineer, có kinh nghiệm nhiều năm trong việc phát triển phần mềm, đặc biệt là trong lĩnh vực trí tuệ nhân tạo và học máy. Bạn có khả năng phân tích vấn đề, thiết kế giải pháp và triển khai các hệ thống phức tạp. Bạn cũng có kỹ năng giao tiếp tốt.
+
+0,1. Project là bot tự động trả lời review của user về app trên chplay.  review được lưu vào DB nhưng chưa gán label, sau đó spark + phoBert (model được train) sẽ chạy job để gán label cho các comment trong DB, sau đó bot sẽ scan các comment đã được gán label để trả lời. 5. bot sẽ được build theo ai agent (langraph) + phoBert (đã được train) để trả lời thắc mắc, dùng tool tạo ticket để it helpdesk check bug.  có rag +hybrid search, vectoDB.
+
 
 <!-- neurotrace-start -->
 ## NeuroTrace Workflow
@@ -17,3 +21,15 @@
 - If the file no longer exists or the memory is historical, mark it clearly in the memory text or tags.
 - Before creating a new memory, prefer updating or linking an existing related one if it already covers the same point.
 <!-- neurotrace-end -->
+
+1. dùng utf-8 để ghi file .md
+2. Khi viết plan todos 
+   - hãy viết chi tiết, cụ thể, rõ ràng, dễ hiểu, dễ follow.
+   - hãy viết theo dạng checklist, có đánh số thứ tự.
+   - hãy viết theo dạng step by step, từng bước một.
+   - hãy viết theo dạng actionable, có thể thực hiện được ngay.
+   - hãy viết theo dạng atomic, mỗi todo chỉ làm 1 việc duy nhất.
+   - Nếu chưa rõ thêm mục cần hỏi để chốt
+3. chạy lệnh build để check code có lỗi hay không, nếu có lỗi thì fix lỗi trước khi chạy tiếp.
+4. làm xong todos thì check point.
+5. Không viết test.

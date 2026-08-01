@@ -297,3 +297,165 @@ class RetrievalError(AppError):
             error_code=error_code,
             details=details,
         )
+
+
+# ── LLM Errors ───────────────────────────────────────────────────────
+
+
+class LLMError(AppError):
+    """Raised when an LLM operation fails."""
+
+    def __init__(
+        self,
+        message: str = "LLM operation failed",
+        error_code: str = "LLM_ERROR",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            message=message,
+            status_code=502,
+            error_code=error_code,
+            details=details,
+        )
+
+
+class LLMTimeoutError(LLMError):
+    """Raised when an LLM request times out."""
+
+    def __init__(self, timeout: int = 30) -> None:
+        super().__init__(
+            message=f"LLM request timed out after {timeout}s",
+            error_code="LLM_TIMEOUT",
+        )
+
+
+class LLMServiceUnavailableError(LLMError):
+    """Raised when the LLM service is unreachable."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            message="LLM service is unavailable",
+            error_code="LLM_SERVICE_UNAVAILABLE",
+        )
+
+
+class LLMRateLimitError(LLMError):
+    """Raised when the LLM API rate limit is exceeded."""
+
+    def __init__(self, retry_after: int | None = None) -> None:
+        msg = "LLM rate limit exceeded"
+        if retry_after:
+            msg += f", retry after {retry_after}s"
+        super().__init__(
+            message=msg,
+            status_code=429,
+            error_code="LLM_RATE_LIMIT",
+        )
+
+
+# ── PhoBERT Errors ───────────────────────────────────────────────────
+
+
+class PhoBERTError(AppError):
+    """Raised when a PhoBERT operation fails."""
+
+    def __init__(
+        self,
+        message: str = "PhoBERT operation failed",
+        error_code: str = "PHOBERT_ERROR",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            message=message,
+            status_code=502,
+            error_code=error_code,
+            details=details,
+        )
+
+
+class PhoBERTTimeoutError(PhoBERTError):
+    """Raised when a PhoBERT request times out."""
+
+    def __init__(self, timeout: int = 30) -> None:
+        super().__init__(
+            message=f"PhoBERT request timed out after {timeout}s",
+            error_code="PHOBERT_TIMEOUT",
+        )
+
+
+class PhoBERTServiceUnavailableError(PhoBERTError):
+    """Raised when the PhoBERT service is unreachable."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            message="PhoBERT service is unavailable",
+            error_code="PHOBERT_SERVICE_UNAVAILABLE",
+        )
+
+
+# ── Chunking Errors ──────────────────────────────────────────────────
+
+
+class ChunkingError(AppError):
+    """Raised when a chunking operation fails."""
+
+    def __init__(
+        self,
+        message: str = "Chunking operation failed",
+        error_code: str = "CHUNKING_ERROR",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            message=message,
+            status_code=500,
+            error_code=error_code,
+            details=details,
+        )
+
+
+class TextExtractionError(ChunkingError):
+    """Raised when text extraction from a file fails."""
+
+    def __init__(
+        self,
+        message: str = "Text extraction failed",
+        error_code: str = "TEXT_EXTRACTION_ERROR",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            message=message,
+            error_code=error_code,
+            details=details,
+        )
+
+
+class UnsupportedFileFormatError(ChunkingError):
+    """Raised when the file format is not supported for text extraction."""
+
+    def __init__(self, extension: str) -> None:
+        super().__init__(
+            message=f"Unsupported file format: '{extension}'",
+            status_code=415,
+            error_code="UNSUPPORTED_FILE_FORMAT",
+            details={"extension": extension},
+        )
+
+
+# ── Spark Errors ─────────────────────────────────────────────────────
+
+
+class SparkJobError(AppError):
+    """Raised when a Spark job operation fails."""
+
+    def __init__(
+        self,
+        message: str = "Spark job operation failed",
+        error_code: str = "SPARK_ERROR",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            message=message,
+            status_code=502,
+            error_code=error_code,
+            details=details,
+        )

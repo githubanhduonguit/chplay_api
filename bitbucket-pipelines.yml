@@ -1,0 +1,43 @@
+image: python:3.11
+
+pipelines:
+  pull-requests:
+    '**':
+      - step:
+          name: 🤖 AI Code Review - PR (Inline Comments)
+          script:
+            - pip install -r requirements.txt
+            - python scripts/cerebras_pr_review.py
+          artifacts:
+            - pr-review.json
+
+  branches:
+    develop:
+      - step:
+          name: 🤖 Full Code Review - Inline Comments
+          trigger: manual
+          script:
+            - pip install -r requirements.txt
+            - python scripts/cerebras_code_review.py
+          artifacts:
+            - code-review-inline.md
+
+    main:
+      - step:
+          name: 🤖 Full Code Review - Inline Comments
+          trigger: manual
+          script:
+            - pip install -r requirements.txt
+            - python scripts/cerebras_code_review.py
+          artifacts:
+            - code-review-inline.md
+
+  custom:
+    full-review:
+      - step:
+          name: 🤖 Full Repository Review (Inline Comments)
+          script:
+            - pip install -r requirements.txt
+            - python scripts/cerebras_code_review.py
+          artifacts:
+            - code-review-inline.md
