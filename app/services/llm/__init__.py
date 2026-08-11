@@ -1,11 +1,17 @@
 """LLM service package."""
 
 from app.services.llm.gemini import (
-    GeminiReviewReplyService,
     GeminiReplyError,
+    GeminiReviewReplyService,
+)
+from app.services.llm.glm import (
+    GLMReplyError,
+    GLMReviewReplyService,
 )
 
 __all__ = [
-    "GeminiReviewReplyService",
     "GeminiReplyError",
+    "GeminiReviewReplyService",
+    "GLMReplyError",
+    "GLMReviewReplyService",
 ]

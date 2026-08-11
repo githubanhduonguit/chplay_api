@@ -131,12 +131,19 @@ class LiteLLMService:
         if settings.LITELLM_API_BASE:
             litellm.api_base = settings.LITELLM_API_BASE
 
+        # Resolve API key: prefer LITELLM_API_KEY, fall back to provider-specific keys
+        api_key = settings.LITELLM_API_KEY or settings.ZAI_API_KEY
+
         # Build model list for router
         all_models = [self.primary_model] + self.fallback_models
         model_list = [
             {
                 "model_name": f"model_{i}",
-                "litellm_params": {"model": model, "timeout": self.timeout},
+                "litellm_params": {
+                    "model": model,
+                    "timeout": self.timeout,
+                    **({"api_key": api_key} if api_key else {}),
+                },
             }
             for i, model in enumerate(all_models)
         ]
@@ -146,7 +153,7 @@ class LiteLLMService:
             fallbacks=[(self.primary_model, self.fallback_models)] if self.fallback_models else [],
             num_retries=self.max_retries,
             allowed_fails=3,
-            context_length_fallback=True,
+            enable_pre_call_checks=True,
         )
 
         logger.info(

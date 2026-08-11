@@ -337,7 +337,7 @@ class ChunkingService:
 
             points.append(
                 PointUpsert(
-                    id=str(chunk.id),
+                    id=chunk.id,  # Qdrant accepts unsigned int point IDs
                     vector=chunk.embedding,
                     metadata=metadata,
                 ),

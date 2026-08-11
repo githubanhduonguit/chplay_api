@@ -57,7 +57,7 @@ User Query
       │
       ▼
 ┌─────────────────┐
-│   LLM Answer    │  ← Gemini/LiteLLM sinh câu trả lời cuối
+│   LLM Answer    │  ← GLM/LiteLLM sinh câu trả lời cuối
 └─────────────────┘
       │
       ▼
@@ -72,7 +72,7 @@ User Query
 | **Vector Store** | Qdrant | Lưu document embeddings |
 | **Keyword Search** | BM25 (rank-bm25) | Search từ khóa truyền thống |
 | **Embedding** | BAAI/bge-m3 | Text embedding 1024-d |
-| **LLM** | Gemini (qua LiteLLM) | Query rewrite + Answer generation |
+| **LLM** | GLM (qua LiteLLM) | Query rewrite + Answer generation |
 | **Classification** | PhoBERT (custom model) | Phân loại intent của review |
 | **Reranker** | Cross-encoder (pass-through hiện tại) | Rerank search results |
 | **Web Search** | Google Custom Search API | Tra cứu thông tin web khi RAG thiếu |
@@ -120,7 +120,7 @@ python -m app.jobs.generate_review_replies --limit 10
 | Biến | Mô tả | Mặc định |
 |------|-------|----------|
 | `DATABASE_URL` | PostgreSQL async connection string | _(required)_ |
-| `GEMINI_API_KEY` | Google Gemini API key | _(required for LLM)_ |
+| `ZAI_API_KEY` | Z.AI (Zhipu AI) API key cho GLM models | _(required for LLM)_ |
 | `LITELLM_API_KEY` | LiteLLM API key | _(optional)_ |
 
 ### VDB & Search
@@ -159,7 +159,9 @@ python -m app.jobs.generate_review_replies --limit 10
 
 | Biến | Mô tả | Mặc định |
 |------|-------|----------|
-| `LITELLM_MODEL` | Model chính | `gemini/gemini-3.5-flash` |
+| `LITELLM_MODEL` | Model chính | `zai/glm-4.7-flash` |
+| `ZAI_API_KEY` | Z.AI (Zhipu AI) API key cho GLM models | `""` |
+| `LITELLM_API_KEY` | LiteLLM API key (ưu tiên hơn `ZAI_API_KEY`) | `""` |
 | `LITELLM_FALLBACK_MODELS` | Fallback models (comma-separated) | `""` |
 | `PHOBERT_API_URL` | PhoBERT classification API | `""` |
 | `GEMINI_MODEL` | Gemini model name | `gemini-3.5-flash` |
@@ -296,7 +298,7 @@ app/
 │   │   ├── schemas.py      # Request/response schemas
 │   │   ├── client.py       # Google API client
 │   │   └── service.py      # Web search service
-│   ├── llm/                # LLM services (Gemini, LiteLLM)
+│   ├── llm/                # LLM services (Gemini, GLM, LiteLLM)
 │   ├── phobert/            # PhoBERT classification
 │   ├── chunking/           # Document chunking
 │   ├── spark/              # Spark session

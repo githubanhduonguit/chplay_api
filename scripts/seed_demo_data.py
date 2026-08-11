@@ -384,7 +384,7 @@ def print_demo_guide(result: dict) -> None:
     print(f"     POST /api/apps/{package_name}/reviews")
     print(f"     -> Xem bot_reply_status = 'pending'")
     print()
-    print(f"  7. Chay job sinh bot reply (can GEMINI_API_KEY):")
+    print(f"  7. Chay job sinh bot reply (can ZAI_API_KEY - GLM):")
     print(f"     python -m app.jobs.generate_review_replies --limit 5")
     print()
     print(f"  8. Kiem tra bot reply da duoc tao:")

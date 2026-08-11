@@ -25,7 +25,7 @@ from app.core.config import settings
 from app.db.session import async_session_factory
 from app.db.repository.comment import CommentRepository
 from app.services.agents.review_reply_agent import ReviewReplyAgent
-from app.services.llm.gemini import GeminiReviewReplyService
+from app.services.llm.glm import GLMReviewReplyService
 from app.services.spark.session import get_spark_session
 
 logger = logging.getLogger(__name__)
@@ -142,9 +142,7 @@ async def run_generate_review_replies(
     async with async_session_factory() as session:
         repo = CommentRepository(session)
         agent = ReviewReplyAgent(
-            llm_service=GeminiReviewReplyService(
-                api_key=settings.GEMINI_API_KEY,
-            )
+            llm_service=GLMReviewReplyService(),
         )
 
         # Get pending reviews

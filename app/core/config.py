@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     LITELLM_API_KEY: str = ""
     LITELLM_API_BASE: str = "https://api.litellm.ai"
+    ZAI_API_KEY: str = ""  # Z.AI (Zhipu AI) API key for GLM models (zai/ prefix)
 
     # ── PhoBERT ──────────────────────────────────────────────────────
     PHOBERT_API_URL: str = ""
@@ -47,6 +48,9 @@ class Settings(BaseSettings):
     PHOBERT_BATCH_SIZE: int = 32
 
     # ── Embedding ────────────────────────────────────────────────────
+    # Provider format: "openai" (OpenAI-compatible endpoint, e.g. TEI/Ollama)
+    # or "gemini" (Google Gemini embedContent API).
+    EMBEDDING_PROVIDER: str = "openai"
     EMBEDDING_API_URL: str = "http://localhost:8001/v1/embeddings"
     EMBEDDING_API_KEY: str = ""
     EMBEDDING_MODEL: str = "BAAI/bge-m3"
@@ -66,7 +70,7 @@ class Settings(BaseSettings):
 
     # ── Gemini / LLM ─────────────────────────────────────────────────
     GEMINI_MODEL: str = "gemini-3.5-flash"
-    LITELLM_MODEL: str = "gemini/gemini-3.5-flash"
+    LITELLM_MODEL: str = "zai/glm-4.7-flash"
     LITELLM_FALLBACK_MODELS: str = ""  # comma-separated: "gemini/gemini-1.5-flash,openai/gpt-4o-mini"
     LITELLM_TIMEOUT: int = 60
     LITELLM_MAX_RETRIES: int = 3

@@ -10,6 +10,8 @@ Configures the app with:
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 
@@ -21,6 +23,28 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.core.config import settings
 from app.core.exceptions import AppError
 
+logger = logging.getLogger(__name__)
+
+
+# ── Logging setup ────────────────────────────────────────────────────
+# Uvicorn only configures its own loggers (uvicorn.* with propagate=False)
+# and leaves the root logger at WARNING, so application logs (app.*)
+# would be silently dropped. Ensure the root logger is visible no matter
+# how the app is launched (uvicorn or plain scripts).
+def _ensure_root_logging() -> None:
+    log_level = getattr(logging, str(settings.LOG_LEVEL).upper(), logging.INFO)
+    root = logging.getLogger()
+    root.setLevel(log_level)
+    if not root.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(
+            logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"),
+        )
+        root.addHandler(handler)
+
+
+_ensure_root_logging()
+
 # ── API routers ──────────────────────────────────────────────────────
 
 try:
@@ -31,6 +55,12 @@ except Exception as e:
 
 from app.api.v1.documents import router as documents_router
 
+from app.services.queue.queue import review_job_queue
+from app.services.queue.worker import ReviewQueueWorker
+
+# Module-level worker reference so the lifespan shutdown can stop it.
+review_worker: ReviewQueueWorker | None = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -39,9 +69,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings.upload_path.mkdir(parents=True, exist_ok=True)
     settings.data_path.mkdir(parents=True, exist_ok=True)
 
+    # Startup: start the review queue worker
+    global review_worker
+    review_worker = ReviewQueueWorker(review_job_queue)
+    review_task = asyncio.create_task(review_worker.start())
+    logger.info(
+        "Review queue worker started (queue size=%d)",
+        review_job_queue.size(),
+    )
+
     yield
 
-    # Shutdown: cleanup resources (if any)
+    # Shutdown: stop the review queue worker
+    if review_worker is not None:
+        await review_worker.stop()
+        review_task.cancel()
+        await asyncio.gather(review_task, return_exceptions=True)
+        logger.info("Review queue worker stopped.")
 
 
 app = FastAPI(

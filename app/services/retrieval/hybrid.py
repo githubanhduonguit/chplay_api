@@ -188,6 +188,10 @@ class HybridSearchService:
             A list of HybridSearchResultItem from BM25 search.
         """
         if not self.bm25_indexer.is_built:
+            # Try to load the persisted index (built by the chunking/scheduler process)
+            await self.bm25_indexer.load()
+
+        if not self.bm25_indexer.is_built:
             logger.debug("BM25 index not built — skipping BM25 branch")
             return []
 

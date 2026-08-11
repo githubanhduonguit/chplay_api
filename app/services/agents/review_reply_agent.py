@@ -2,7 +2,7 @@
 
 Acts as the middle layer between the job and the LLM service:
 1. Normalizes and validates input.
-2. Calls Gemini via GeminiReviewReplyService.
+2. Calls GLM via GLMReviewReplyService.
 3. Validates the generated output.
 4. Provides RAG + Web search context retrieval.
 """
@@ -15,10 +15,15 @@ from typing import Any
 
 from app.core.config import settings
 from app.db.models.comment import Comment
-from app.services.llm.gemini import (
-    GeminiReplyError,
-    GeminiReviewReplyService,
+from app.services.bm25.indexer import BM25Indexer
+from app.services.embedding.service import EmbeddingService
+from app.services.llm.glm import (
+    GLMReplyError,
+    GLMReviewReplyService,
 )
+from app.services.qdrant.service import QdrantService
+from app.services.retrieval.hybrid import HybridSearchService
+from app.services.retrieval.schemas import HybridSearchRequest
 from app.services.web_search.schemas import WebSearchRequest
 from app.services.web_search.service import WebSearchService
 
@@ -51,23 +56,33 @@ class ReviewReplyAgent:
     """Agent that orchestrates review reply generation.
 
     Args:
-        llm_service: The Gemini review reply service instance.
+        llm_service: The GLM review reply service instance.
         reply_max_length: Maximum allowed reply length in characters.
         web_search_service: WebSearchService for web context retrieval.
             If None, web search is disabled for review replies.
+        retriever: HybridSearchService for RAG context retrieval.
+            If None, a default HybridSearchService is created (Qdrant +
+            BM25). Retrieval failures are non-fatal: the reply flow
+            continues with empty context.
     """
 
     def __init__(
         self,
-        llm_service: GeminiReviewReplyService | None = None,
+        llm_service: GLMReviewReplyService | None = None,
         reply_max_length: int | None = None,
         web_search_service: WebSearchService | None = None,
+        retriever: HybridSearchService | None = None,
     ) -> None:
-        self.llm_service = llm_service or GeminiReviewReplyService()
+        self.llm_service = llm_service or GLMReviewReplyService()
         self.reply_max_length = reply_max_length or getattr(
             self.llm_service, "reply_max_length", 1000
         )
         self.web_search_service = web_search_service or WebSearchService()
+        self.retriever = retriever or HybridSearchService(
+            embedding_service=EmbeddingService(),
+            qdrant_service=QdrantService(),
+            bm25_indexer=BM25Indexer(),
+        )
 
     async def run(self, review: Comment) -> ReviewReplyResult:
         """Process a review and generate a bot reply.
@@ -126,9 +141,9 @@ class ReviewReplyAgent:
                 source_mode="rag_plus_web" if rag_context and web_context else "rag_only",
             )
 
-        except GeminiReplyError as e:
+        except GLMReplyError as e:
             logger.error(
-                "Gemini error generating reply for review %s: %s",
+                "GLM error generating reply for review %s: %s",
                 review.id,
                 str(e),
             )
@@ -204,18 +219,48 @@ class ReviewReplyAgent:
     async def get_retrieval_context(
         self, input_data: ReviewReplyInput
     ) -> list[str]:
-        """Retrieve relevant context for the reply (RAG hook).
+        """Retrieve relevant context for the reply via hybrid search (RAG).
 
-        This is a placeholder for future retrieval-augmented generation.
-        Override this method or inject a retriever to enable RAG.
+        Uses the injected HybridSearchService to search the Qdrant vector
+        store (plus BM25) for documents related to the review content.
+        Failures are non-fatal: if retrieval fails or is unavailable, an
+        empty list is returned so the reply flow can continue.
 
         Args:
             input_data: The normalized input.
 
         Returns:
-            A list of context strings. Currently returns empty list.
+            A list of context strings formatted as "[i] <text>", or an
+            empty list if retrieval is unavailable or fails.
         """
-        return []
+        if self.retriever is None:
+            return []
+
+        try:
+            request = HybridSearchRequest(
+                query=input_data.content,
+                collection=settings.QDRANT_COLLECTION,
+                top_k=10,
+                top_k_vector=20,
+                top_k_bm25=20,
+            )
+            response = await self.retriever.search(request)
+
+            results: list[str] = []
+            for i, item in enumerate(response.results, 1):
+                if item.text and item.text.strip():
+                    results.append(f"[{i}] {item.text.strip()}")
+
+            logger.info("Retrieved %d RAG results", len(results))
+            return results
+
+        except Exception as e:
+            logger.warning(
+                "RAG retrieval failed for review %s: %s",
+                input_data.review_id,
+                str(e),
+            )
+            return []
 
     async def get_web_context(
         self, input_data: ReviewReplyInput

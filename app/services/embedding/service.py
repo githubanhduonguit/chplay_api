@@ -193,19 +193,25 @@ class EmbeddingService:
 
         return results
 
-    @staticmethod
-    def _apply_query_prefix(query: str) -> str:
+    def _apply_query_prefix(self, query: str) -> str:
         """Apply the BGE query instruction prefix.
 
         BAAI/bge-m3 uses a specific instruction prefix for queries
-        to distinguish them from documents during retrieval.
+        to distinguish them from documents during retrieval:
+        'Represent this sentence for searching relevant passages: '.
+
+        The prefix is BGE-specific and skipped for other providers
+        (e.g. Google Gemini embeddings), where query and document
+        embeddings are compared directly.
 
         Args:
             query: The raw query string.
 
         Returns:
-            The query string with the BGE instruction prefix.
+            The query string with the BGE instruction prefix (if applicable).
         """
+        if self.client.is_gemini:
+            return query
         return (
             "Represent this sentence for searching relevant passages: " + query
         )

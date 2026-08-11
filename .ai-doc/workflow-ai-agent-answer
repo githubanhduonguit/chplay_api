@@ -1,0 +1,128 @@
+# VNeID Review AI Agent — Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    autonumber
+
+    actor FE as Frontend
+    participant BE as Business Service
+    participant DB as Database
+    participant Q as Queue (Python in-app)
+    participant AI as AI Agent
+    participant RAG as RAG / Knowledge Base
+    participant LLM as LLM
+
+    %% User tạo review → BE tự enqueue job (không có endpoint process riêng)
+    FE->>BE: POST /api/apps/{package_name}/reviews
+    BE->>DB: Insert review (bot_reply_status = PENDING)
+    BE->>Q: Enqueue review job
+    BE-->>FE: 201 Created (không chờ AI xử lý)
+
+    %% Async processing
+    Q->>AI: Consume review job
+    AI->>DB: Update bot_reply_status = PROCESSING
+
+    %% AI decides whether RAG is needed
+    AI->>AI: Analyze review & decide if guidance is needed
+
+    alt Review needs VNeID guidance
+        AI->>RAG: Retrieve relevant VNeID knowledge
+        RAG-->>AI: Relevant context
+        AI->>LLM: Generate reply + review + RAG context
+    else No guidance needed
+        AI->>LLM: Generate reply from review
+    end
+
+    LLM-->>AI: Generated reply
+    AI->>DB: Save AI reply (insert bot comment)
+    AI->>DB: Update bot_reply_status = COMPLETED
+
+    %% User reloads page
+    FE->>BE: GET /reviews
+    BE->>DB: Query reviews + AI replies
+    DB-->>BE: Reviews + replies
+    BE-->>FE: Return reviews + AI replies
+```
+
+## Flow
+
+```text
+FE
+ │
+ │ POST /api/apps/{package_name}/reviews (tạo review — trigger)
+ ▼
+Business Service
+ │
+ ├──► DB: Insert review (PENDING)
+ │
+ ├──► Queue (Python in-app): Enqueue review job
+ │
+ └──► 201 Created
+          │
+          ▼
+   Queue (Python in-app)
+          │
+          ▼
+       AI Agent
+          │
+          ├──► RAG ──► Knowledge Base
+          │
+          └──► LLM
+                │
+                ▼
+             AI Reply
+                │
+                ▼
+        DB: insert bot comment
+                │
+                │
+        User reloads page
+                │
+                ▼
+               FE
+```
+
+## Job state
+
+```text
+PENDING
+   │
+   ▼
+PROCESSING
+   │
+   ▼
+COMPLETED
+
+   └──────────► FAILED
+```
+
+## Scheduler — gán label cho record trong DB
+
+Scheduler (APScheduler) chạy **job gán label** bằng Spark + PhoBERT cho các comment/review trong DB
+(cập nhật `absa_status`, `overall_sentiment`, `comment_aspects`). Job này **không** sinh reply.
+
+```text
+Scheduler (APScheduler)
+   │
+   ▼
+Spark + PhoBERT Labeling Job
+   │
+   ▼
+Gán label cho comment trong DB
+   (overall_sentiment / absa_status / aspects)
+```
+
+## Queue
+
+- **Queue viết bằng Python, chạy trong application** (in-process), không dùng infra bên ngoài
+  (Celery / Redis / RQ).
+- Khi review được tạo qua API (hoặc record mới cần xử lý), Business Service **enqueue review job** vào Queue.
+- AI Agent consume job từ Queue và xử lý bất đồng bộ.
+
+## Key design point
+
+`Business Service` sở hữu **Queue**, nên FE chỉ cần quan tâm đến API và dữ liệu trong DB. FE **không chờ AI Agent xử lý xong**.
+
+- **Trigger**: FE **không gọi endpoint process riêng** — API tạo review (`POST /api/apps/{package_name}/reviews`) đã tồn tại; khi tạo review, review được insert vào DB với trạng thái `PENDING` và đồng thời enqueue job vào Queue.
+- Khi AI Agent hoàn tất và insert reply vào DB (dạng bot comment), lần `GET /reviews` tiếp theo của FE sẽ nhận được câu trả lời mới.
+- **Scheduler** chỉ đảm nhiệm việc gán label (Spark + PhoBERT) cho các record trong DB.

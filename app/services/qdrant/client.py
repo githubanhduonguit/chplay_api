@@ -324,16 +324,17 @@ class QdrantClientWrapper:
         """
         client = await self.get_client()
         try:
-            results = await client.search(
+            # qdrant-client >= 1.15: search() was replaced by query_points()
+            response = await client.query_points(
                 collection_name=collection_name,
-                query_vector=query_vector,
+                query=query_vector,
                 limit=limit,
                 score_threshold=score_threshold,
                 query_filter=query_filter,
                 with_payload=with_payload,
-                with_vector=with_vector,
+                with_vectors=with_vector,
             )
-            return results
+            return response.points
         except UnexpectedResponse as e:
             if "not found" in str(e).lower():
                 raise CollectionNotFoundError(collection_name) from e
@@ -358,11 +359,23 @@ class QdrantClientWrapper:
         """
         client = await self.get_client()
         try:
-            results = await client.search_batch(
+            # qdrant-client >= 1.15: search_batch() was replaced by query_batch_points()
+            requests = [
+                qdrant_models.QueryRequest(
+                    query=q.vector,
+                    filter=q.filter,
+                    limit=q.limit,
+                    score_threshold=q.score_threshold,
+                    with_payload=q.with_payload,
+                    with_vector=q.with_vector,
+                )
+                for q in queries
+            ]
+            responses = await client.query_batch_points(
                 collection_name=collection_name,
-                requests=queries,
+                requests=requests,
             )
-            return results
+            return [r.points for r in responses]
         except UnexpectedResponse as e:
             if "not found" in str(e).lower():
                 raise CollectionNotFoundError(collection_name) from e
