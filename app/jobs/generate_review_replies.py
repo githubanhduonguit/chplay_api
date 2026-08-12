@@ -64,18 +64,26 @@ async def process_single_review(
         if review is None:
             return False, f"Review {review_id} not found in current session."
 
-        # Check if still pending or processing (idempotency)
-        if review.bot_reply_status not in ("pending", "processing"):
+        # Check if still pending/processing/failed (idempotency + retry)
+        if review.bot_reply_status not in ("pending", "processing", "failed"):
             return False, (
                 f"Review {review_id} has status '{review.bot_reply_status}', "
-                f"expected 'pending' or 'processing'. Skipping."
+                f"expected 'pending', 'processing' or 'failed'. Skipping."
             )
 
-        # Check for existing bot reply (avoid duplicates)
+        # Check for existing bot reply (avoid duplicates). If a reply already
+        # exists, the review is effectively complete - reconcile the status so
+        # reviews stuck in 'processing' (e.g. after a crashed run) converge to
+        # 'completed' instead of being re-picked forever.
         has_reply = await repo.has_bot_reply_for_review(review.id)
         if has_reply:
-            logger.warning("Review %s already has a bot reply. Skipping.", review.id)
-            return False, "Bot reply already exists."
+            logger.warning(
+                "Review %s already has a bot reply. Marking as completed.",
+                review.id,
+            )
+            await repo.update_bot_reply_status(review.id, "completed")
+            await repo.session.commit()
+            return True, None
 
         # Generate reply
         result = await agent.run(review)
@@ -114,12 +122,15 @@ async def process_single_review(
 
 async def run_generate_review_replies(
     limit: int | None = None,
+    include_stale: bool = False,
 ) -> JobResult:
     """Main job function: process pending reviews and generate bot replies.
 
     Args:
         limit: Maximum number of reviews to process in this run.
             Defaults to settings.REVIEW_REPLY_BATCH_SIZE.
+        include_stale: If True, also retry failed reviews and reviews stuck
+            in 'processing' for over 30 minutes.
 
     Returns:
         A JobResult with counts of success/failed/skipped.
@@ -145,8 +156,10 @@ async def run_generate_review_replies(
             llm_service=GLMReviewReplyService(),
         )
 
-        # Get pending reviews
-        pending_reviews = await repo.get_pending_bot_reply_reviews(limit=limit)
+        # Get pending reviews (optionally including failed/stale for retry)
+        pending_reviews = await repo.get_pending_bot_reply_reviews(
+            limit=limit, include_stale=include_stale
+        )
         job_result.total = len(pending_reviews)
         logger.info("Found %s pending reviews to process.", job_result.total)
 
@@ -166,6 +179,15 @@ async def run_generate_review_replies(
 
             # Process the review
             success, error = await process_single_review(repo, agent, review.id)
+
+            # End this review's transaction explicitly. Without this, a
+            # skipped/failed review's uncommitted 'processing' marker stays in
+            # the session and gets committed by the next review's success
+            # commit, leaving reviews stuck in 'processing' forever.
+            try:
+                await session.commit()
+            except Exception:
+                await session.rollback()
 
             if success:
                 job_result.success += 1

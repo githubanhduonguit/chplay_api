@@ -33,6 +33,7 @@
 3. chạy lệnh build để check code có lỗi hay không, nếu có lỗi thì fix lỗi trước khi chạy tiếp.
 4. làm xong todos thì check point.
 5. Không viết test.
+6. Trả lời bằng tiếng việt
 
 Lưu ý: máy này là Windows, console mặc định dùng cp1252/cp1258 chứ không phải UTF-8. Khi làm việc với Python/file:
 Ghi file luôn dùng UTF-8 — ưu tiên dùng tool write_file, không dùng echo/cat/heredoc để tạo file; khi mở file bằng Python thì truyền encoding='utf-8'.

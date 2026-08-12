@@ -240,6 +240,44 @@ async def job_retry_failed_jobs() -> None:
         logger.info("Job '%s' finished in %.2fs", job_id, duration)
 
 
+async def job_generate_review_replies() -> None:
+    """Generate bot replies for pending reviews and retry failed/stale ones.
+
+    Process:
+    1. Run run_generate_review_replies with include_stale=True
+    2. Handles pending reviews (e.g. seeded data never enqueued),
+       failed reviews, and reviews stuck in 'processing' > 30 min
+    3. Log summary
+    """
+    job_id = "generate_review_replies"
+    if not _acquire_lock(job_id):
+        return
+
+    start_time = datetime.now(timezone.utc)
+    logger.info("Job '%s' started at %s", job_id, start_time.isoformat())
+
+    try:
+        from app.jobs.generate_review_replies import run_generate_review_replies
+
+        result = await run_generate_review_replies(include_stale=True)
+        logger.info(
+            "Review replies job: success=%s, failed=%s, skipped=%s, total=%s",
+            result.success,
+            result.failed,
+            result.skipped,
+            result.total,
+        )
+        if result.errors:
+            for err in result.errors:
+                logger.warning("  - %s", err)
+    except Exception as e:
+        logger.error("Review replies job failed: %s", e, exc_info=True)
+    finally:
+        _release_lock(job_id)
+        duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+        logger.info("Job '%s' finished in %.2fs", job_id, duration)
+
+
 async def job_label_comments() -> None:
     """Label pending comments with Spark + PhoBERT.
 
@@ -339,6 +377,16 @@ class BackgroundScheduler:
             max_instances=1,
         )
 
+        # Generate bot replies for pending/failed/stale reviews every 30 minutes
+        self.scheduler.add_job(
+            job_generate_review_replies,
+            IntervalTrigger(minutes=30),
+            id="generate_review_replies",
+            name="Generate review replies (retry failed/stale)",
+            coalesce=True,
+            max_instances=1,
+        )
+
         # Label comments every 30 seconds (Spark + PhoBERT)
         self.scheduler.add_job(
             job_label_comments,
@@ -391,7 +439,11 @@ class BackgroundScheduler:
             {
                 "id": job.id,
                 "name": job.name,
-                "next_run_time": job.next_run_time.isoformat() if job.next_run_time else None,
+                "next_run_time": (
+                    getattr(job, "next_run_time", None).isoformat()
+                    if getattr(job, "next_run_time", None)
+                    else None
+                ),
                 "trigger": str(job.trigger),
             }
             for job in jobs

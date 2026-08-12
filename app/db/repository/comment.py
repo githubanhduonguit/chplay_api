@@ -7,9 +7,10 @@ and updating bot reply statuses.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import select, func
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.comment import Comment
@@ -28,7 +29,9 @@ class CommentRepository(BaseRepository[Comment]):
     def __init__(self, session: AsyncSession) -> None:
         super().__init__(Comment, session)
 
-    async def get_pending_bot_reply_reviews(self, limit: int = 20) -> list[Comment]:
+    async def get_pending_bot_reply_reviews(
+        self, limit: int = 20, include_stale: bool = False
+    ) -> list[Comment]:
         """Get reviews that are pending bot reply generation.
 
         Filters:
@@ -36,20 +39,41 @@ class CommentRepository(BaseRepository[Comment]):
             - author_type == "user"
             - bot_reply_status == "pending"
 
+        With ``include_stale=True`` also returns retry candidates:
+            - bot_reply_status == "failed"
+            - bot_reply_status == "processing" stuck longer than 30 minutes
+              (approximated with ``created_at`` since the model has no
+              ``updated_at`` column)
+
         Ordered by created_at ascending (oldest first) for stable processing.
 
         Args:
             limit: Maximum number of reviews to return.
+            include_stale: If True, also include failed and stuck-processing
+                reviews for retry. Defaults to False (keeps current behavior).
 
         Returns:
             A list of Comment instances matching the criteria.
         """
+        if include_stale:
+            stale_cutoff = datetime.now(timezone.utc) - timedelta(minutes=30)
+            status_filter = or_(
+                Comment.bot_reply_status == "pending",
+                Comment.bot_reply_status == "failed",
+                and_(
+                    Comment.bot_reply_status == "processing",
+                    Comment.created_at < stale_cutoff,
+                ),
+            )
+        else:
+            status_filter = Comment.bot_reply_status == "pending"
+
         stmt = (
             select(Comment)
             .where(
                 (Comment.type == "review")
                 & (Comment.author_type == "user")
-                & (Comment.bot_reply_status == "pending")
+                & status_filter
             )
             .order_by(Comment.created_at.asc())
             .limit(limit)
