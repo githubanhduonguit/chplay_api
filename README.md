@@ -130,8 +130,8 @@ python -m app.jobs.generate_review_replies --limit 10
 | `QDRANT_URL` | Qdrant server URL | `http://localhost:6333` |
 | `QDRANT_API_KEY` | Qdrant API key | `""` |
 | `QDRANT_COLLECTION` | Collection name | `documents` |
-| `EMBEDDING_API_URL` | Embedding server URL | `http://localhost:8001/v1/embeddings` |
-| `EMBEDDING_MODEL` | Embedding model | `BAAI/bge-m3` |
+| `EMBEDDING_API_URL` | Embedding server URL | `http://localhost:8001/v1/embeddings` |  (đang dùng gemini và có api để thêm document)
+| `EMBEDDING_MODEL` | Embedding model | `BAAI/bge-m3` | X
 
 ### Web Search (Google Custom Search)
 

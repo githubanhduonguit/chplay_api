@@ -125,7 +125,7 @@
 
 ---
 
-## 📊 Bước 7: BM25
+## 📊 Bước 7: BM25 (dùng gemini embedding)
 
 **Mục tiêu:** BM25 index riêng, support build/update/delete/search.
 

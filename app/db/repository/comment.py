@@ -57,6 +57,29 @@ class CommentRepository(BaseRepository[Comment]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def get_pending_label_comments(self, limit: int = 100) -> list[Comment]:
+        """Get comments that are pending aspect-based sentiment labeling.
+
+        Filters:
+            - absa_status == "pending"
+
+        Ordered by created_at ascending (oldest first) for stable processing.
+
+        Args:
+            limit: Maximum number of comments to return.
+
+        Returns:
+            A list of Comment instances matching the criteria.
+        """
+        stmt = (
+            select(Comment)
+            .where(Comment.absa_status == "pending")
+            .order_by(Comment.created_at.asc())
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
     async def update_bot_reply_status(
         self, comment_id: int, status: str
     ) -> Comment | None:

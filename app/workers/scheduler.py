@@ -6,6 +6,7 @@ Uses APScheduler to run background jobs on a schedule:
 - Sync external data (placeholder for future use)
 - Cleanup old versions and expired data
 - Retry failed processing jobs
+- Label comments with Spark + PhoBERT
 
 Runs as a separate process (started via CLI command).
 """
@@ -239,6 +240,34 @@ async def job_retry_failed_jobs() -> None:
         logger.info("Job '%s' finished in %.2fs", job_id, duration)
 
 
+async def job_label_comments() -> None:
+    """Label pending comments with Spark + PhoBERT.
+
+    Process:
+    1. Fetch comments with absa_status == 'pending'
+    2. Predict labels via the PhoBERT API
+    3. Update overall_sentiment / absa_status and create aspect rows
+    4. Log summary
+    """
+    job_id = "label_comments"
+    if not _acquire_lock(job_id):
+        return
+
+    start_time = datetime.now(timezone.utc)
+    logger.info("Job '%s' started at %s", job_id, start_time.isoformat())
+
+    try:
+        from app.jobs.label_comments import run_label_comments
+
+        await run_label_comments()
+    except Exception as e:
+        logger.error("Label comments job failed: %s", e, exc_info=True)
+    finally:
+        _release_lock(job_id)
+        duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+        logger.info("Job '%s' finished in %.2fs", job_id, duration)
+
+
 # ── Scheduler ────────────────────────────────────────────────────────
 
 
@@ -264,6 +293,7 @@ class BackgroundScheduler:
         - Sync external data: every hour
         - Cleanup old versions: every day at 03:00 AM
         - Retry failed jobs: every 30 minutes
+        - Label comments: every 30 seconds
         """
         if self._jobs_registered:
             logger.warning("Jobs already registered, skipping.")
@@ -305,6 +335,16 @@ class BackgroundScheduler:
             IntervalTrigger(minutes=30),
             id="retry_failed_jobs",
             name="Retry failed jobs",
+            coalesce=True,
+            max_instances=1,
+        )
+
+        # Label comments every 30 seconds (Spark + PhoBERT)
+        self.scheduler.add_job(
+            job_label_comments,
+            IntervalTrigger(seconds=30),
+            id="label_comments",
+            name="Label comments (Spark + PhoBERT)",
             coalesce=True,
             max_instances=1,
         )

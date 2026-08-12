@@ -33,3 +33,9 @@
 3. chạy lệnh build để check code có lỗi hay không, nếu có lỗi thì fix lỗi trước khi chạy tiếp.
 4. làm xong todos thì check point.
 5. Không viết test.
+
+Lưu ý: máy này là Windows, console mặc định dùng cp1252/cp1258 chứ không phải UTF-8. Khi làm việc với Python/file:
+Ghi file luôn dùng UTF-8 — ưu tiên dùng tool write_file, không dùng echo/cat/heredoc để tạo file; khi mở file bằng Python thì truyền encoding='utf-8'.
+Mọi lệnh python qua terminal mà script có thể in ký tự tiếng Việt → thêm PYTHONIOENCODING=utf-8 vào đầu lệnh, ví dụ: PYTHONIOENCODING=utf-8 uv run python scripts/abc.py. Hoặc chèn import sys; sys.stdout.reconfigure(encoding='utf-8') vào đầu script.
+Không dùng heredoc dài qua terminal: script dài hơn ~30 dòng thì viết thành file tạm (vd scripts/_tmp.py) rồi chạy, xong thì xóa.
+cho phép in nội dung .env hoặc dữ liệu nhạy cảm ra console.

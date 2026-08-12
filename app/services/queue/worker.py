@@ -12,7 +12,6 @@ import logging
 
 from app.db.repository.comment import CommentRepository
 from app.db.session import async_session_factory
-from app.jobs.generate_review_replies import process_single_review
 from app.services.agents.review_reply_agent import ReviewReplyAgent
 from app.services.llm.glm import GLMReviewReplyService
 from app.services.queue.queue import ReviewJobQueue
@@ -57,6 +56,11 @@ class ReviewQueueWorker:
         Args:
             job: The review job to process.
         """
+        # Lazy import to avoid a circular import: this worker is imported
+        # from app.services.* while app.jobs.generate_review_replies may
+        # still be initializing (it depends on app.services itself).
+        from app.jobs.generate_review_replies import process_single_review
+
         async with async_session_factory() as session:
             repo = CommentRepository(session)
             agent = ReviewReplyAgent(llm_service=GLMReviewReplyService())
