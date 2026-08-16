@@ -31,7 +31,7 @@
    - hãy viết theo dạng atomic, mỗi todo chỉ làm 1 việc duy nhất.
    - Nếu chưa rõ thêm mục cần hỏi để chốt
 3. chạy lệnh build để check code có lỗi hay không, nếu có lỗi thì fix lỗi trước khi chạy tiếp.
-4. làm xong todos thì check point.
+4. làm xong todos thì check point và khi làm task mới xong lưu thông tin vào neurotrace để lưu lại context, tránh quên.
 5. Không viết test.
 6. Trả lời bằng tiếng việt
 

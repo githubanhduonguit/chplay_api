@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
 
     # ── Database ─────────────────────────────────────────────────────
-    DATABASE_URL: str = "postgresql+asyncpg://neondb_owner:npg_yeTS1N6jgDaz@ep-blue-math-aorankzj-pooler.c-2.ap-southeast-1.aws.neon.tech/neondb"
+    DATABASE_URL: str = ""  # Load from .env (DATABASE_URL) - do not hardcode credentials in source
 
     # ── Qdrant ───────────────────────────────────────────────────────
     QDRANT_URL: str = "http://localhost:6333"

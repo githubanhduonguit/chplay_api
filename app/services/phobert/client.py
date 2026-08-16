@@ -295,7 +295,16 @@ class PhoBERTClient:
         """
         normalized: dict[str, Any] = {}
         # Copy all known fields
-        for key in ("label", "confidence", "score", "sentiment", "aspect", "probability"):
+        for key in (
+            "label",
+            "confidence",
+            "score",
+            "sentiment",
+            "aspect",
+            "topic_l1",
+            "topic_l2",
+            "probability",
+        ):
             if key in prediction:
                 normalized[key] = prediction[key]
         # Ensure at least a label exists

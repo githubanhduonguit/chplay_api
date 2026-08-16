@@ -1,6 +1,11 @@
 """Pydantic schemas for API requests and responses."""
 
-from app.schemas.review import AuthorSchema, ReviewSchema, GetReviewsResponseSchema
+from app.schemas.review import (
+    AspectSchema,
+    AuthorSchema,
+    ReviewSchema,
+    GetReviewsResponseSchema,
+)
 from app.schemas.app import RatingSchema, DeveloperSchema, AppDetailSchema
 from app.schemas.comment import (
     CreateReviewRequest,
@@ -9,6 +14,7 @@ from app.schemas.comment import (
 )
 
 __all__ = [
+    "AspectSchema",
     "AuthorSchema",
     "ReviewSchema",
     "GetReviewsResponseSchema",

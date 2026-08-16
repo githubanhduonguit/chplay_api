@@ -45,11 +45,33 @@ class LabelJobResult:
     errors: list[str] = field(default_factory=list)
 
 
+def _split_pipe(value: Any) -> list[str]:
+    """Split a pipe-separated string into non-empty stripped tokens.
+
+    Args:
+        value: Value from the API (expected str like "a|b", may be None).
+
+    Returns:
+        List of non-empty tokens.
+    """
+    if not value:
+        return []
+    return [t.strip() for t in str(value).split("|") if t.strip()]
+
+
 def _extract_aspects(result: dict[str, Any]) -> list[dict[str, Any]]:
     """Extract a normalized list of aspect dicts from a prediction result.
 
-    Supports either a single aspect dict or a list of aspect dicts
-    under the "aspect" key.
+    Primary format (new PhoBERT API):
+        {"topic_l1": "account_user|content_features",
+         "topic_l2": "signup_issue|feature_bug"}
+        → zips L1 and L2 positionally: [(account_user, signup_issue),
+          (content_features, feature_bug)]. When topic_l2 is empty,
+          each L1 is emitted with topic_l2=None.
+
+    Fallback format (old API):
+        {"aspect": [{"aspect": "technical_issue", ...}, ...]}
+        → each entry becomes {"topic_l1": aspect_name, "topic_l2": None}.
 
     Args:
         result: A single prediction dict from the PhoBERT API.
@@ -57,11 +79,42 @@ def _extract_aspects(result: dict[str, Any]) -> list[dict[str, Any]]:
     Returns:
         A list of aspect dicts (empty if none present).
     """
+    # Primary: topic_l1 / topic_l2 pipe-separated strings
+    if "topic_l1" in result:
+        l1_list = _split_pipe(result.get("topic_l1"))
+        l2_list = _split_pipe(result.get("topic_l2"))
+        aspects: list[dict[str, Any]] = []
+        if not l2_list:
+            aspects = [{"topic_l1": l1} for l1 in l1_list]
+        else:
+            aspects = [
+                {"topic_l1": l1, "topic_l2": l2}
+                for l1, l2 in zip(l1_list, l2_list)
+            ]
+        return aspects
+
+    # Fallback: old "aspect" list format
     aspect_data = result.get("aspect")
     if isinstance(aspect_data, list):
-        return [a for a in aspect_data if isinstance(a, dict)]
+        out: list[dict[str, Any]] = []
+        for a in aspect_data:
+            if not isinstance(a, dict):
+                continue
+            name = a.get("aspect") or a.get("name")
+            if not name:
+                continue
+            item = dict(a)
+            item["topic_l1"] = str(name)
+            item["topic_l2"] = None
+            out.append(item)
+        return out
     if isinstance(aspect_data, dict):
-        return [aspect_data]
+        name = aspect_data.get("aspect") or aspect_data.get("name")
+        if name:
+            item = dict(aspect_data)
+            item["topic_l1"] = str(name)
+            item["topic_l2"] = None
+            return [item]
     return []
 
 
@@ -154,17 +207,20 @@ async def run_label_comments(limit: int | None = None) -> LabelJobResult:
                 continue
 
             # Create CommentAspect rows if the prediction includes aspects
+            created_aspects: list[str] = []
             try:
                 for aspect in _extract_aspects(result):
-                    aspect_name = aspect.get("aspect") or aspect.get("name")
+                    aspect_l1 = aspect.get("topic_l1")
+                    aspect_l2 = aspect.get("topic_l2")
                     aspect_sentiment = aspect.get("sentiment") or aspect.get("label")
-                    if not aspect_name or not aspect_sentiment:
+                    if not aspect_l1:
                         continue
                     session.add(
                         CommentAspect(
                             comment_id=comment.id,
-                            aspect=str(aspect_name),
-                            sentiment=str(aspect_sentiment),
+                            topic_l1=str(aspect_l1),
+                            topic_l2=str(aspect_l2) if aspect_l2 else None,
+                            sentiment=str(aspect_sentiment or sentiment or "neutral"),
                             confidence_score=_to_float(
                                 aspect.get("confidence_score")
                                 or aspect.get("confidence")
@@ -173,12 +229,22 @@ async def run_label_comments(limit: int | None = None) -> LabelJobResult:
                             model_version=aspect.get("model_version"),
                         )
                     )
+                    created_aspects.append(
+                        str(aspect_l1) + (f"|{aspect_l2}" if aspect_l2 else "")
+                    )
             except Exception as e:
                 logger.warning(
                     "Failed to create aspects for comment %s: %s",
                     comment.id,
                     e,
                 )
+
+            logger.info(
+                "Labeled comment %s: sentiment=%s, aspects=%s",
+                comment.id,
+                comment.overall_sentiment,
+                created_aspects or "(none)",
+            )
 
         try:
             await session.commit()

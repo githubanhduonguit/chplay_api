@@ -8,6 +8,7 @@ from fastapi import HTTPException
 
 from app.db.models import App, Comment
 from app.schemas import (
+    AspectSchema,
     AuthorSchema,
     ReviewSchema,
     GetReviewsResponseSchema,
@@ -151,6 +152,22 @@ class AppService:
                         ),
                     )
 
+                    # Build aspect-level labels from CommentAspect rows
+                    # (one entry per detected aspect).
+                    aspects = [
+                        AspectSchema(
+                            topic_l1=aspect.topic_l1,
+                            topic_l2=aspect.topic_l2,
+                            sentiment=aspect.sentiment,
+                            confidence=(
+                                float(aspect.confidence_score)
+                                if aspect.confidence_score is not None
+                                else None
+                            ),
+                        )
+                        for aspect in comment.aspects
+                    ]
+
                     review_item = ReviewSchema(
                         id=comment.id,
                         author=author,
@@ -160,6 +177,7 @@ class AppService:
                         createdAt=comment.created_at,
                         absaStatus=comment.absa_status,
                         botReplyStatus=comment.bot_reply_status,
+                        labels=aspects,
                     )
 
                     if comment.rating is not None:
