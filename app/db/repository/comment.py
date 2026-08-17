@@ -82,22 +82,29 @@ class CommentRepository(BaseRepository[Comment]):
         return list(result.scalars().all())
 
     async def get_pending_label_comments(self, limit: int = 100) -> list[Comment]:
-        """Get comments that are pending aspect-based sentiment labeling.
+        """Get reviews that are pending aspect-based sentiment labeling.
+
+        Only top-level reviews are labeled — comments (e.g. user replies
+        and bot replies, type == "comment") are excluded.
 
         Filters:
+            - type == "review"
             - absa_status == "pending"
 
         Ordered by created_at ascending (oldest first) for stable processing.
 
         Args:
-            limit: Maximum number of comments to return.
+            limit: Maximum number of reviews to return.
 
         Returns:
             A list of Comment instances matching the criteria.
         """
         stmt = (
             select(Comment)
-            .where(Comment.absa_status == "pending")
+            .where(
+                (Comment.type == "review")
+                & (Comment.absa_status == "pending")
+            )
             .order_by(Comment.created_at.asc())
             .limit(limit)
         )

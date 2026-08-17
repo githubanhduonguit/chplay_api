@@ -100,6 +100,28 @@ class Settings(BaseSettings):
     SCHEDULER_ENABLED: bool = False
     SCHEDULER_TIMEZONE: str = "Asia/Ho_Chi_Minh"
 
+    # ── Ticket (IT Helpdesk / Trello) ────────────────────────────────
+    # Provider: "http" (generic REST IT Helpdesk) hoặc "trello"
+    TICKET_PROVIDER: str = "http"
+    TICKET_API_URL: str = ""  # endpoint create ticket của IT Helpdesk
+    TICKET_API_KEY: str = ""
+    TICKET_TIMEOUT: int = 30
+    TICKET_MAX_RETRIES: int = 3
+
+    # Trello (chỉ dùng khi TICKET_PROVIDER=trello)
+    TRELLO_API_KEY: str = ""
+    TRELLO_API_TOKEN: str = ""
+    TRELLO_LIST_ID: str = ""  # idList chứa card mới — phải là 1 list trong board TRELLO_BOARD_URL
+    TRELLO_BOARD_URL: str = "https://trello.com/b/VbxJyXU9/ai-tickets"  # board đích (AI Tickets)
+
+    # ── Issue Proposal ───────────────────────────────────────────────
+    # Mỗi cụm topic = 1 ticket đề xuất, KHÔNG giới hạn số review (đã chốt):
+    # 100 review chỉ nói 2 vấn đề (login lỗi, font sai) → chỉ 2 tickets.
+    PROPOSAL_MIN_REVIEWS: int = 1  # cụm topic dù chỉ 1 review vẫn tạo proposal
+    PROPOSAL_DETECT_CRON_HOUR: int = 7  # detect chạy 07:00 sáng mỗi ngày (case daily)
+    PROPOSAL_PROCESS_INTERVAL_SECONDS: int = 60  # poll proposal APPROVED mỗi 60s
+    PROPOSAL_BATCH_SIZE: int = 20
+
     # ── Paths ────────────────────────────────────────────────────────
     UPLOAD_DIR: str = "uploads"
     DATA_DIR: str = "data"

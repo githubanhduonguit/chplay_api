@@ -15,6 +15,7 @@ from app.db.base import Base, BaseMixin
 
 if TYPE_CHECKING:
     from app.db.models.comment import Comment
+    from app.db.models.ticket_proposal import TicketProposal
 
 
 class App(BaseMixin, Base):
@@ -43,6 +44,11 @@ class App(BaseMixin, Base):
         back_populates="app",
         cascade="all, delete-orphan",
         lazy="selectin",
+    )
+    ticket_proposals: Mapped[list[TicketProposal]] = relationship(
+        "TicketProposal",
+        back_populates="app",
+        cascade="all, delete-orphan",
     )
 
     def __repr__(self) -> str:

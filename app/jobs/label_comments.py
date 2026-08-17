@@ -3,14 +3,17 @@
 Flow:
 1. Create Spark session (optional — used as batch boundary, None is fine).
 2. Open async DB session.
-3. Fetch pending comments (absa_status == "pending") via CommentRepository.
-4. Call PhoBERTClient.predict_batch to get labels for all comment contents.
+3. Fetch pending reviews (type == "review", absa_status == "pending")
+   via CommentRepository.
+4. Call PhoBERTClient.predict_batch to get labels for all review contents.
 5. For each comment:
    a. Set overall_sentiment from the prediction (sentiment or label).
    b. Mark absa_status as 'completed' (or 'failed' on error).
    c. Create CommentAspect rows when the prediction includes aspects.
 6. Commit and log a summary.
 
+Only reviews are labeled — comments (user replies and bot replies,
+type == "comment") are excluded.
 This job only assigns labels — it does NOT generate bot replies.
 """
 
