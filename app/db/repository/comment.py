@@ -7,7 +7,7 @@ and updating bot reply statuses.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import and_, func, or_, select
@@ -182,3 +182,46 @@ class CommentRepository(BaseRepository[Comment]):
         self.session.add(bot_reply)
         await self.session.flush()
         return bot_reply
+
+    async def get_negative_labeled_reviews(
+        self,
+        limit: int = 100,
+        from_date: date | None = None,
+        to_date: date | None = None,
+    ) -> list[Comment]:
+        """Get labeled negative reviews from users.
+
+        Filters:
+            - type == "review"
+            - author_type == "user"
+            - absa_status == "completed"
+            - rating <= 3
+            - created_at within (from_date, to_date) if provided
+
+        Ordered by created_at ascending (oldest first) for stable processing.
+
+        Args:
+            limit: Maximum number of reviews to return.
+            from_date: Only reviews created on/after this date.
+            to_date: Only reviews created on/before this date.
+
+        Returns:
+            A list of Comment instances matching the criteria.
+        """
+        stmt = (
+            select(Comment)
+            .where(
+                (Comment.type == "review")
+                & (Comment.author_type == "user")
+                & (Comment.absa_status == "completed")
+                & (Comment.rating <= 3)
+            )
+            .order_by(Comment.created_at.asc())
+            .limit(limit)
+        )
+        if from_date is not None:
+            stmt = stmt.where(Comment.created_at >= from_date)
+        if to_date is not None:
+            stmt = stmt.where(Comment.created_at <= to_date)
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())

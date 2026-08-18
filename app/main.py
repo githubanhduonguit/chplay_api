@@ -54,12 +54,16 @@ except Exception as e:
     apps_router = None
 
 from app.api.v1.documents import router as documents_router
+from app.api.routes.tickets import router as tickets_router
 
 from app.services.queue.queue import review_job_queue
+from app.services.queue.ticket_queue import ticket_proposal_queue
+from app.services.queue.ticket_worker import TicketProposalQueueWorker
 from app.services.queue.worker import ReviewQueueWorker
 
-# Module-level worker reference so the lifespan shutdown can stop it.
+# Module-level worker references so the lifespan shutdown can stop them.
 review_worker: ReviewQueueWorker | None = None
+ticket_worker: TicketProposalQueueWorker | None = None
 
 
 @asynccontextmanager
@@ -70,12 +74,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings.data_path.mkdir(parents=True, exist_ok=True)
 
     # Startup: start the review queue worker
-    global review_worker
+    global review_worker, ticket_worker
     review_worker = ReviewQueueWorker(review_job_queue)
     review_task = asyncio.create_task(review_worker.start())
     logger.info(
         "Review queue worker started (queue size=%d)",
         review_job_queue.size(),
+    )
+
+    # Startup: start the ticket proposal queue worker (async ticket creation
+    # right after an admin approves a proposal — no polling scheduler).
+    ticket_worker = TicketProposalQueueWorker(ticket_proposal_queue)
+    ticket_task = asyncio.create_task(ticket_worker.start())
+    logger.info(
+        "Ticket proposal queue worker started (queue size=%d)",
+        ticket_proposal_queue.size(),
     )
 
     yield
@@ -86,6 +99,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         review_task.cancel()
         await asyncio.gather(review_task, return_exceptions=True)
         logger.info("Review queue worker stopped.")
+
+    # Shutdown: stop the ticket proposal queue worker
+    if ticket_worker is not None:
+        await ticket_worker.stop()
+        ticket_task.cancel()
+        await asyncio.gather(ticket_task, return_exceptions=True)
+        logger.info("Ticket proposal queue worker stopped.")
 
 
 app = FastAPI(
@@ -112,6 +132,7 @@ app.add_middleware(
 if apps_router:
     app.include_router(apps_router)
 app.include_router(documents_router, prefix="/api/v1")
+app.include_router(tickets_router, prefix="/api/v1")
 
 
 # ── Global Exception Handlers ────────────────────────────────────────

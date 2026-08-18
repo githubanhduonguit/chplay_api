@@ -441,6 +441,42 @@ class UnsupportedFileFormatError(ChunkingError):
         )
 
 
+# ── Ticket Errors ────────────────────────────────────────────────────
+
+
+class TicketError(AppError):
+    """Raised when a ticket operation fails."""
+
+    def __init__(
+        self,
+        message: str = "Ticket operation failed",
+        error_code: str = "TICKET_ERROR",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            message=message,
+            status_code=502,
+            error_code=error_code,
+            details=details,
+        )
+
+
+class TicketCreationError(TicketError):
+    """Raised when a ticket cannot be created at the external provider."""
+
+    def __init__(
+        self,
+        message: str = "Failed to create ticket",
+        error_code: str = "TICKET_CREATION_ERROR",
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            message=message,
+            error_code=error_code,
+            details=details,
+        )
+
+
 # ── Spark Errors ─────────────────────────────────────────────────────
 
 

@@ -12,6 +12,13 @@ from app.schemas.comment import (
     CreateCommentRequest,
     CommentResponseSchema,
 )
+from app.schemas.ticket import (
+    TicketProposalSchema,
+    TicketProposalListResponse,
+    ApproveProposalRequest,
+    RejectProposalRequest,
+    ProposalActionResponse,
+)
 
 __all__ = [
     "AspectSchema",
@@ -24,4 +31,9 @@ __all__ = [
     "CreateReviewRequest",
     "CreateCommentRequest",
     "CommentResponseSchema",
+    "TicketProposalSchema",
+    "TicketProposalListResponse",
+    "ApproveProposalRequest",
+    "RejectProposalRequest",
+    "ProposalActionResponse",
 ]

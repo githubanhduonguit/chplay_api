@@ -1,14 +1,19 @@
-"""In-app queue package for processing review jobs.
+"""In-app queue package for processing review and ticket proposal jobs.
 
 Provides:
-- ReviewJob: dataclass describing a review job.
-- ReviewJobQueue: typed wrapper around asyncio.Queue.
-- review_job_queue: module-level singleton queue.
-- ReviewQueueWorker: background consumer loop for processing jobs.
+- ReviewJob / TicketProposalJob: dataclasses describing queue jobs.
+- ReviewJobQueue / TicketProposalJobQueue: typed asyncio.Queue wrappers.
+- review_job_queue / ticket_proposal_queue: module-level singletons.
+- ReviewQueueWorker / TicketProposalQueueWorker: background consumers.
 """
 
 from app.services.queue.queue import ReviewJobQueue, review_job_queue
-from app.services.queue.schemas import ReviewJob
+from app.services.queue.schemas import ReviewJob, TicketProposalJob
+from app.services.queue.ticket_queue import (
+    TicketProposalJobQueue,
+    ticket_proposal_queue,
+)
+from app.services.queue.ticket_worker import TicketProposalQueueWorker
 from app.services.queue.worker import ReviewQueueWorker
 
 __all__ = [
@@ -16,4 +21,8 @@ __all__ = [
     "ReviewJobQueue",
     "review_job_queue",
     "ReviewQueueWorker",
+    "TicketProposalJob",
+    "TicketProposalJobQueue",
+    "ticket_proposal_queue",
+    "TicketProposalQueueWorker",
 ]
