@@ -77,6 +77,19 @@ class Settings(BaseSettings):
     REVIEW_REPLY_BATCH_SIZE: int = 20
     REVIEW_REPLY_MAX_LENGTH: int = 1000
 
+    # ── Auth0 ──────────────────────────────────────────────────────
+    AUTH0_DOMAIN: str = ""
+    AUTH0_AUDIENCE: str = ""
+    AUTH0_ALGORITHMS: list[str] = ["RS256"]
+
+    @property
+    def AUTH0_ISSUER(self) -> str:
+        return f"https://{self.AUTH0_DOMAIN}/"
+
+    @property
+    def AUTH0_JWKS_URL(self) -> str:
+        return f"https://{self.AUTH0_DOMAIN}/.well-known/jwks.json"
+
     # ── Spark ────────────────────────────────────────────────────────
     SPARK_MASTER: str = "local[*]"
     SPARK_APP_NAME: str = "chplay-api"
