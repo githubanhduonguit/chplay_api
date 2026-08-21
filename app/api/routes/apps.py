@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.dependencies import get_current_user
 from app.schemas import (
+    Auth0User,
     GetReviewsResponseSchema,
     AppDetailSchema,
     CreateReviewRequest,
@@ -72,7 +73,7 @@ async def create_review(
     package_name: str,
     request: CreateReviewRequest,
     db: AsyncSession = Depends(get_db),
-    _user: dict = Depends(get_current_user),
+    _user: Auth0User = Depends(get_current_user),
 ) -> CommentResponseSchema:
     """Create a new review for an app.
 
@@ -103,7 +104,7 @@ async def create_comment(
     review_id: int,
     request: CreateCommentRequest,
     db: AsyncSession = Depends(get_db),
-    _user: dict = Depends(get_current_user),
+    _user: Auth0User = Depends(get_current_user),
 ) -> CommentResponseSchema:
     """Create a new comment on a review.
 

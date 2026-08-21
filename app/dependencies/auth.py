@@ -16,6 +16,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 
 from app.core.config import settings
+from app.schemas.auth import Auth0User
 
 logger = logging.getLogger(__name__)
 
@@ -105,21 +106,21 @@ def _get_signing_key(jwks: dict[str, Any], token: str) -> str:
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-) -> dict[str, Any]:
+) -> Auth0User:
     """
-    Validate JWT token and return user claims.
-    
+    Validate JWT token and return a typed Auth0User.
+
     This dependency:
     1. Extracts Bearer token from Authorization header
     2. Fetches JWKS public key from Auth0 (with caching)
     3. Validates JWT signature, expiration, audience, and issuer
-    4. Returns user claims dict (sub, email, name, etc.)
+    4. Returns an Auth0User instance (sub, email, name, etc.)
     
     Args:
         credentials: HTTP Bearer credentials from request header.
         
     Returns:
-        Dictionary containing user claims from the JWT.
+        Auth0User instance built from the decoded JWT claims.
         
     Raises:
         HTTPException: 401 if token is invalid, expired, or missing.
@@ -148,7 +149,7 @@ async def get_current_user(
             issuer=settings.AUTH0_ISSUER,
         )
         
-        return payload
+        return Auth0User.from_claims(payload)
         
     except JWTError as e:
         logger.warning(f"JWT validation failed: {e}")

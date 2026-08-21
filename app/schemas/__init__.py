@@ -1,5 +1,6 @@
 """Pydantic schemas for API requests and responses."""
 
+from app.schemas.auth import Auth0User
 from app.schemas.review import (
     AspectSchema,
     AuthorSchema,
@@ -36,4 +37,5 @@ __all__ = [
     "ApproveProposalRequest",
     "RejectProposalRequest",
     "ProposalActionResponse",
+    "Auth0User",
 ]
