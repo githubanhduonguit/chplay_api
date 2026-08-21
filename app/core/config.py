@@ -90,6 +90,14 @@ class Settings(BaseSettings):
     def AUTH0_JWKS_URL(self) -> str:
         return f"https://{self.AUTH0_DOMAIN}/.well-known/jwks.json"
 
+    # ── CORS ────────────────────────────────────────────────────────
+    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        """Parse CORS_ORIGINS comma-separated string into a list."""
+        return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
+
     # ── Spark ────────────────────────────────────────────────────────
     SPARK_MASTER: str = "local[*]"
     SPARK_APP_NAME: str = "chplay-api"
