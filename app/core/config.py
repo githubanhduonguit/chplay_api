@@ -91,7 +91,7 @@ class Settings(BaseSettings):
         return f"https://{self.AUTH0_DOMAIN}/.well-known/jwks.json"
 
     # ── CORS ────────────────────────────────────────────────────────
-    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000,https://githubanhduonguit.github.io"
 
     @property
     def cors_origins_list(self) -> list[str]:
