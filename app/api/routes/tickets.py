@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
+from app.dependencies import get_current_user
 from app.schemas import (
     ApproveProposalRequest,
     ProposalActionResponse,
@@ -45,6 +46,7 @@ async def list_proposals(
         description="Filter by batch date (YYYY-MM-DD) — reviews aggregated on that day",
     ),
     db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(get_current_user),
 ) -> TicketProposalListResponse:
     """List ticket proposals with pagination and optional filters."""
     service = TicketProposalService(db)
@@ -66,6 +68,7 @@ async def list_proposals(
 async def get_proposal(
     proposal_id: int,
     db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(get_current_user),
 ) -> TicketProposalSchema:
     """Get a single ticket proposal by id.
 
@@ -90,6 +93,7 @@ async def approve_proposal(
     proposal_id: int,
     request: ApproveProposalRequest | None = None,
     db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(get_current_user),
 ) -> ProposalActionResponse:
     """Approve a PROPOSED proposal.
 
@@ -129,6 +133,7 @@ async def reject_proposal(
     proposal_id: int,
     request: RejectProposalRequest | None = None,
     db: AsyncSession = Depends(get_db),
+    _user: dict = Depends(get_current_user),
 ) -> ProposalActionResponse:
     """Reject a PROPOSED proposal (no ticket is created).
 
